@@ -30,6 +30,8 @@ export type RunEvent = {
 		totalMs: number;
 	} | null;
 	statementSequence?: number;
+	queryId?: string | null;
+	warehouseTerminationConfirmed?: boolean | null;
 	intent?: string;
 	elapsedMs?: number;
 	writtenRows?: number | null;
@@ -45,6 +47,8 @@ export type RunStatus =
 	| 'succeeded'
 	| 'failed'
 	| 'cancelled'
+	| 'cancelling'
+	| 'cancellation_failed'
 	| 'running'
 	| 'unresponsive'
 	| 'presumed_failed';
@@ -103,6 +107,9 @@ export type BuildFeed = {
 	events: RunEvent[];
 	stderr: string;
 	forceAvailable: boolean;
+	activeQueryId?: string | null;
+	cancellationStatus?: RunStatus | null;
+	cancellationError?: string | null;
 };
 
 export type RunRecord = {

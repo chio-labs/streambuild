@@ -5,6 +5,15 @@ import type { RunEventLabelContext } from '$lib/run-presentation/types';
 export function labelRunEvent(event: RunEvent, context: RunEventLabelContext): string {
 	const stepId: string | null = event.stepId;
 	if (stepId === null) {
+		if (event.event === 'cancellation_requested') {
+			return `Warehouse cancellation requested for ${event.queryId ?? 'no active query'}`;
+		}
+		if (event.event === 'cancellation_completed') {
+			return `Warehouse query ${event.queryId ?? 'unknown'} cancelled`;
+		}
+		if (event.event === 'cancellation_failed') {
+			return `Warehouse cancellation failed for ${event.queryId ?? 'unknown'}${event.errorMessage ? ` · ${event.errorMessage}` : ''}`;
+		}
 		if (event.event === 'run_completed') return event.outcome ?? 'completed';
 		if (event.event === 'run_started' && event.startupTimings) {
 			return `${context.displayCommand} · prepared in ${formatDuration(event.startupTimings.totalMs / 1000)} (compile ${formatDuration(event.startupTimings.compileMs / 1000)}, observability ${formatDuration(event.startupTimings.observabilityMs / 1000)}, warehouse plan ${formatDuration(event.startupTimings.planningMs / 1000)})`;
