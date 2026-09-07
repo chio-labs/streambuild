@@ -29,6 +29,8 @@ class RunPresentationStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    CANCELLING = "cancelling"
+    CANCELLATION_FAILED = "cancellation_failed"
     RUNNING = "running"
     UNRESPONSIVE = "unresponsive"
     PRESUMED_FAILED = "presumed_failed"

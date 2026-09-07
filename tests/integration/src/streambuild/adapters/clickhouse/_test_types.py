@@ -2,6 +2,16 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class QueryCancellationIntegrationTestCase:
+    description: str
+    query_id: str
+    unrelated_query_id: str
+    statement: str
+    expected_query_found: bool
+    expected_termination_confirmed: bool
+
+
+@dataclass(frozen=True)
 class ClickHouseClientIntegrationTestCase:
     description: str
     inserted_rows: tuple[dict[str, object], ...]

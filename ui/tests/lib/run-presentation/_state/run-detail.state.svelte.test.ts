@@ -105,4 +105,48 @@ describe('run detail state', () => {
 		expect(controller.view.initialLoading).toBe(true);
 		expect(controller.view.notFound).toBe(false);
 	});
+
+	it('given owned warehouse cancellation failure when polling then the view keeps it visible and actionable', async () => {
+		const snapshot: RunDetailSnapshot = {
+			feed: FEED,
+			ownership: {
+				...OWNERSHIP,
+				cancellationStatus: 'cancellation_failed',
+				cancellationError: 'ClickHouse query remained active',
+				forceAvailable: true
+			},
+			record: null
+		};
+		mocks.consumeRunDetail.mockResolvedValueOnce(snapshot);
+		const controller: RunDetailController = createRunDetailState(() => Promise.resolve());
+
+		controller.start('run-1', true);
+		await vi.waitFor((): void => expect(controller.view.initialLoading).toBe(false));
+
+		expect(controller.view.status).toBe('cancellation_failed');
+		expect(controller.view.running).toBe(true);
+		expect(controller.view.forceAvailable).toBe(true);
+		expect(controller.view.cancellationError).toBe('ClickHouse query remained active');
+	});
+
+	it('given a durable cancellation failure for an unowned run when polling then stale local ownership does not override it', async () => {
+		mocks.consumeRunDetail.mockResolvedValueOnce({
+			feed: { ...FEED, status: 'cancellation_failed' },
+			ownership: {
+				...OWNERSHIP,
+				invocationId: 'another-run',
+				currentInvocationId: 'another-run',
+				cancellationStatus: 'cancelling'
+			},
+			record: null
+		});
+		const controller: RunDetailController = createRunDetailState(() => Promise.resolve());
+
+		controller.start('run-1', false);
+		await vi.waitFor((): void => expect(controller.view.initialLoading).toBe(false));
+
+		expect(controller.view.status).toBe('cancellation_failed');
+		expect(controller.view.running).toBe(false);
+		expect(controller.view.owned).toBe(false);
+	});
 });

@@ -39,6 +39,8 @@ _STATEMENT_STARTED_KIND: str = "statement_started"
 _STATEMENT_COMPLETED_KIND: str = "statement_completed"
 _AUDIT_STARTED_KIND: str = "audit_started"
 _AUDIT_COMPLETED_KIND: str = "audit_completed"
+_CANCELLATION_COMPLETED_KIND: str = "cancellation_completed"
+_CANCELLATION_FAILED_KIND: str = "cancellation_failed"
 _AUDIT_COMMAND: str = "audit"
 _SCHEDULED_MODE: str = "scheduled"
 _SCHEDULED_COUNT_KEY: str = "scheduled_count"
@@ -244,6 +246,14 @@ def _assemble_runs(
     invocation_id: str
     events: list[dict[str, object]]
     for invocation_id, events in streams.items():
+        cancellation_failure: dict[str, object] | None = next(
+            (event for event in reversed(events) if event["event"] == _CANCELLATION_FAILED_KIND),
+            None,
+        )
+        cancellation_failed: bool = cancellation_failure is not None
+        cancellation_completed: bool = any(
+            event["event"] == _CANCELLATION_COMPLETED_KIND for event in events
+        )
         if invocation_id in terminal_runs:
             started: dict[str, object] | None = next(
                 (event for event in events if event["event"] == _RUN_STARTED_KIND), None
@@ -256,6 +266,19 @@ def _assemble_runs(
                 if terminal_runs[invocation_id].get("auditSummary") is not None:
                     progress.pop("auditSummary")
                 terminal_runs[invocation_id].update(progress)
+            if cancellation_failure is not None:
+                terminal_runs[invocation_id]["status"] = str(
+                    RunPresentationStatus.CANCELLATION_FAILED
+                )
+                terminal_runs[invocation_id]["outcome"] = str(
+                    RunPresentationStatus.CANCELLATION_FAILED
+                )
+                terminal_runs[invocation_id]["errorMessage"] = cancellation_failure.get(
+                    "errorMessage"
+                )
+            elif cancellation_completed:
+                terminal_runs[invocation_id]["status"] = str(RunPresentationStatus.CANCELLED)
+                terminal_runs[invocation_id]["outcome"] = str(RunPresentationStatus.CANCELLED)
             continue
         started: dict[str, object] = events[0]
         completed: dict[str, object] | None = next(
@@ -270,6 +293,10 @@ def _assemble_runs(
             warehouse_now=warehouse_now,
             presumed_failed_after_seconds=presumed_failed_after_seconds,
         )
+        if cancellation_failed:
+            status = RunPresentationStatus.CANCELLATION_FAILED
+        elif cancellation_completed:
+            status = RunPresentationStatus.CANCELLED
         started_at: str = str(started["emittedAt"])
         runs.append(
             {
@@ -303,6 +330,8 @@ def _assemble_runs(
                 **_run_progress(events=events),
             }
         )
+        if cancellation_failure is not None:
+            runs[-1]["errorMessage"] = cancellation_failure.get("errorMessage")
     runs.sort(key=lambda run: str(run["startedAt"]), reverse=True)
     return runs if limit is None else runs[:limit]
 

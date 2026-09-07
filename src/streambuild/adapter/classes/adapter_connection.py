@@ -22,6 +22,7 @@ from streambuild.adapter.models import (
     AdapterMetadataState,
     AdapterMutationResult,
     AdapterNodeResultRecord,
+    AdapterQueryCancellation,
     AdapterQueryResult,
     AdapterReadinessRequest,
     AdapterReadinessRootObservation,
@@ -117,6 +118,17 @@ class AdapterConnection(ABC):
 
         del query_id
         return None
+
+    def cancel_workflow_query(self, *, query_id: str) -> AdapterQueryCancellation:
+        """Cancel one correlated workflow query when the adapter supports it."""
+
+        return AdapterQueryCancellation(
+            query_id=query_id,
+            supported=False,
+            query_found=False,
+            termination_confirmed=False,
+            detail="Adapter does not support workflow query cancellation",
+        )
 
     def load_replay_offset_frontiers(
         self, *, query_id: str, request: AdapterReplayOffsetProgressRequest

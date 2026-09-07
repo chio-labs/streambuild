@@ -631,6 +631,56 @@ def test_given_full_started_command_when_assembling_terminal_run_then_uses_full_
     "test_case",
     [
         DevRefactorTestCase(
+            description=(
+                "warehouse cancellation failure overrides premature cancelled terminal fact"
+            ),
+            expected_value="cancellation_failed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_active_query_after_cancel_when_assembling_run_then_failure_remains_visible(
+    test_case: DevRefactorTestCase,
+) -> None:
+    runs: list[dict[str, object]] = _assemble_runs(
+        terminal_by_id={
+            "inv-1": {
+                "invocationId": "inv-1",
+                "command": "build",
+                "status": "cancelled",
+                "outcome": "cancelled",
+                "startedAt": "2026-08-07 11:00:00.000",
+                "lastSignalAt": "2026-08-07 11:01:00.000",
+            }
+        },
+        streams={
+            "inv-1": [
+                {
+                    "event": "run_started",
+                    "emittedAt": "2026-08-07 11:00:00.000",
+                },
+                {
+                    "event": "cancellation_failed",
+                    "emittedAt": "2026-08-07 11:01:01.000",
+                    "queryId": "query-123",
+                    "warehouseTerminationConfirmed": False,
+                    "errorMessage": "ClickHouse query remained active",
+                },
+            ]
+        },
+        warehouse_now=_WAREHOUSE_NOW,
+        limit=None,
+    )
+
+    assert runs[0]["status"] == test_case.expected_value
+    assert runs[0]["outcome"] == test_case.expected_value
+    assert runs[0]["errorMessage"] == "ClickHouse query remained active"
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DevRefactorTestCase(
             description="active run exposes completed operations and current step",
             expected_value={
                 "completedOperationCount": 1,
