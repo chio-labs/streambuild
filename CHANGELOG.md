@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.1](https://github.com/chio-labs/streambuild/compare/v0.40.0...v0.40.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* filter offset replays at physical source ([#238](https://github.com/chio-labs/streambuild/issues/238)) ([1f30beb](https://github.com/chio-labs/streambuild/commit/1f30beb5f64af81dcdb31a186b66922c4ee64f84))
+
 ## [0.40.0](https://github.com/chio-labs/streambuild/compare/v0.39.0...v0.40.0) (2026-09-07)
 
 
