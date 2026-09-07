@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/chio-labs/streambuild/compare/v0.39.0...v0.40.0) (2026-09-07)
+
+
+### Features
+
+* stop ClickHouse queries when cancelling UI builds ([#237](https://github.com/chio-labs/streambuild/issues/237)) ([aa66b76](https://github.com/chio-labs/streambuild/commit/aa66b76a4a160cd980f1e87fd9b8146510bca23e))
+
 ## [0.39.0](https://github.com/chio-labs/streambuild/compare/v0.38.4...v0.39.0) (2026-09-06)
 
 
