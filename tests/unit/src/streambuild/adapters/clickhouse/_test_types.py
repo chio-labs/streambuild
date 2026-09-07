@@ -223,11 +223,8 @@ class RenderOffsetReplayStatementTestCase:
 class RenderSourceFilteredOffsetPhysicalBoundaryTestCase:
     description: str
     query: str
-    filter_boundaries_at_source: bool
-    expected_inclusive_cte_fragment: str
-    expected_exclusive_cte_fragment: str
-    expected_partition_predicate: str
-    expected_offset_predicate: str
+    expected_inclusive_predicate: str
+    expected_exclusive_predicate: str
     expected_source_fragment: str
     expected_occurrence_count: int
     expected_absent_fragment: str

@@ -106,10 +106,6 @@ def _is_model_realization_sql(statement: str) -> bool:
     )
 
 
-def _is_replay_sql(statement: str) -> bool:
-    return "cutoff_offsets AS" in statement
-
-
 def _is_coverage_capture_sql(statement: str) -> bool:
     return "AS driving_input_relation_name" in statement
 
@@ -308,19 +304,23 @@ class FailSecondReplayOnceConnection(RecordingDelegatingConnection):
     def __init__(self, delegate: AdapterConnection) -> None:
         super().__init__(delegate)
         self.replay_targets: list[str] = []
+        self._replay_statements: set[str] = set()
         self._replay_count: int = 0
         self._failed: bool = False
 
     def render_replay_from_capture(self, request: AdapterCapturedReplayRequest) -> str:
         self.replay_targets.append(request.replay.relations.target)
-        return super().render_replay_from_capture(request)
+        statement: str = super().render_replay_from_capture(request)
+        self._replay_statements.add(statement.rstrip().rstrip(";"))
+        return statement
 
     def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
-        self._replay_count += int(_is_replay_sql(statement))
+        is_replay: bool = statement.rstrip().rstrip(";") in self._replay_statements
+        self._replay_count += int(is_replay)
         action: Callable[[str], AdapterMutationResult] = {
             True: self._reject_replay,
             False: super().execute_workflow_sql,
-        }[not self._failed and self._replay_count == 2 and _is_replay_sql(statement)]
+        }[not self._failed and self._replay_count == 2 and is_replay]
         return action(statement)
 
     def _reject_replay(self, statement: str) -> AdapterMutationResult:

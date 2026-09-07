@@ -26,6 +26,13 @@ class ClickHouseReplayProgressIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseOffsetReplayIntegrationTestCase:
+    description: str
+    source_rows: tuple[tuple[str, int, int], ...]
+    expected_positions: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
 class ClickHouseWarehouseTimestampIntegrationTestCase:
     description: str
     expected_fractional_digits: int
