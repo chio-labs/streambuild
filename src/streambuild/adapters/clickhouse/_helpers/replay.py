@@ -685,117 +685,55 @@ def _render_offset_replay(
     request: AdapterReplayRequest,
     lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...],
 ) -> str:
-    cutoff_cte_sql: str = _offset_frontier_cte(
-        boundaries=request.boundaries,
-        value_alias="cutoff_offset",
-    )
-    lower_bound_cte_sql: str = _lower_offset_frontier_cte(lower_bound_rows)
-    if request.replay_query.aggregate_semantics or request.filter_boundaries_at_source:
-        return _render_aggregate_offset_replay(
-            request=request,
-            cutoff_cte_sql=cutoff_cte_sql,
-            lower_bound_cte_sql=lower_bound_cte_sql,
-            has_lower_bound=bool(lower_bound_rows),
-        )
-    replay_query: str = _rewrite_replay_query(
-        sql=request.replay_query.query,
-        relation_rewrites=(
-            SqlRelationRewrite(
-                source_name=request.relations.source,
-                target_relation=f"{request.database}.{request.relations.anchor}",
-            ),
-        ),
-    ).query
-    lower_bound_clause: str = _offset_lower_bound_clause(
-        source_alias="replay_source",
-        offset_column=_CANONICAL_REPLAY_OFFSET,
-        has_lower_bound=bool(lower_bound_rows),
-        inclusive=request.window.lower_bound_inclusive,
-    )
-    lower_bound_cte: str = (
-        f",\nactive_start_offsets AS (\n{lower_bound_cte_sql}\n)\n" if lower_bound_rows else ""
-    )
-    lower_bound_join: str = _offset_lower_bound_join(
-        source_alias="replay_source",
-        partition_column=_CANONICAL_REPLAY_PARTITION,
-        has_lower_bound=bool(lower_bound_rows),
-    )
-    upper_bound_clause: str = _offset_upper_bound_clause(
-        source_alias="replay_source",
-        offset_column=_CANONICAL_REPLAY_OFFSET,
-    )
-    wrapped_query: str = (
-        f"WITH cutoff_offsets AS (\n{cutoff_cte_sql}\n)"
-        f"{lower_bound_cte}"
-        "SELECT replay_source.*\n"
-        f"FROM (\n{replay_query}\n) AS replay_source\n"
-        "INNER JOIN cutoff_offsets\n"
-        f"ON replay_source.{_CANONICAL_REPLAY_PARTITION} = "
-        f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-        f"{lower_bound_join}"
-        f"WHERE {upper_bound_clause}\n"
-        f"{lower_bound_clause}".rstrip()
-    )
-    return _build_replay_insert(
+    predicate: str = _offset_literal_predicate(
         request=request,
-        query=wrapped_query,
+        lower_bound_rows=lower_bound_rows,
     )
-
-
-def _render_aggregate_offset_replay(
-    *,
-    request: AdapterReplayRequest,
-    cutoff_cte_sql: str,
-    lower_bound_cte_sql: str,
-    has_lower_bound: bool,
-) -> str:
-    lower_bound_join: str = _offset_lower_bound_join(
-        source_alias="anchor",
-        partition_column=request.columns.partition,
-        has_lower_bound=has_lower_bound,
-    )
-    lower_bound_clause: str = _offset_lower_bound_clause(
-        source_alias="anchor",
-        offset_column=request.columns.offset,
-        has_lower_bound=has_lower_bound,
-        inclusive=request.window.lower_bound_inclusive,
-    )
-    upper_bound_clause: str = _offset_upper_bound_clause(
-        source_alias="anchor",
-        offset_column=request.columns.offset,
-    )
-    source_sql: str = (
-        f"SELECT anchor.*\n"
+    filtered_source: str = (
+        "SELECT anchor.*\n"
         f"FROM {request.database}.{request.relations.anchor} AS anchor\n"
-        "INNER JOIN cutoff_offsets\n"
-        f"ON anchor.{request.columns.partition} = "
-        f"cutoff_offsets.{_CANONICAL_REPLAY_PARTITION}\n"
-        f"{lower_bound_join}"
-        f"WHERE {upper_bound_clause}\n"
-        f"{lower_bound_clause}"
-    ).rstrip()
-    named_queries: tuple[SqlNamedQuery, ...] = (
-        SqlNamedQuery(name="cutoff_offsets", query=cutoff_cte_sql),
-        *(
-            (SqlNamedQuery(name="active_start_offsets", query=lower_bound_cte_sql),)
-            if has_lower_bound
-            else ()
-        ),
+        f"WHERE {predicate}"
     )
     rewritten_query: str = _rewrite_replay_query(
         sql=request.replay_query.query,
         relation_rewrites=(
             SqlRelationRewrite(
                 source_name=request.relations.source,
-                target_relation=f"({source_sql})",
+                target_relation=f"({filtered_source})",
             ),
         ),
-        prepend_ctes=named_queries,
     ).query
-    return _build_replay_insert(
-        request=request,
-        query=rewritten_query,
-    )
+    return _build_replay_insert(request=request, query=rewritten_query)
+
+
+def _offset_literal_predicate(
+    *,
+    request: AdapterReplayRequest,
+    lower_bound_rows: tuple[ClickHouseReplayOffsetFrontier, ...],
+) -> str:
+    lower_by_partition: dict[str, str] = {
+        str(row.partition): row.cutoff_offset for row in lower_bound_rows
+    }
+    predicates: list[str] = []
+    for boundary in request.boundaries:
+        partition_value: str | None = boundary.partition_value
+        if partition_value is None:
+            raise AdapterReplayError("Offset replay boundary requires a partition value")
+        upper_operator: str = "<=" if boundary.cutoff_inclusive else "<"
+        clauses: list[str] = [
+            f"anchor.{request.columns.partition} = {partition_value}",
+            f"anchor.{request.columns.offset} {upper_operator} {boundary.cutoff_value}",
+        ]
+        lower_value: str | None = lower_by_partition.get(partition_value)
+        if lower_value is not None:
+            lower_operator: str = ">=" if request.window.lower_bound_inclusive else ">"
+            clauses.append(f"anchor.{request.columns.offset} {lower_operator} {lower_value}")
+        predicates.append("(" + " AND ".join(clauses) + ")")
+    if not predicates:
+        return "false"
+    if len(predicates) == 1:
+        return predicates[0]
+    return "(\n  " + "\n  OR ".join(predicates) + "\n)"
 
 
 def _physical_boundary_column(request: AdapterReplayRequest) -> str:
@@ -866,17 +804,6 @@ def _offset_frontier_cte(*, boundaries: tuple[AdapterReplayBoundary, ...], value
         f"{boundary.cutoff_value} AS {value_alias}, "
         f"{'true' if boundary.cutoff_inclusive else 'false'} AS cutoff_inclusive"
         for boundary in boundaries
-    )
-
-
-def _lower_offset_frontier_cte(
-    rows: tuple[ClickHouseReplayOffsetFrontier, ...],
-) -> str:
-    return "\nUNION ALL\n".join(
-        "SELECT "
-        f"{row.partition} AS {_CANONICAL_REPLAY_PARTITION}, "
-        f"{row.cutoff_offset} AS start_offset"
-        for row in rows
     )
 
 

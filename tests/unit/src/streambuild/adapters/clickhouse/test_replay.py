@@ -59,13 +59,6 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
             expected_statement=dedent(
                 """
             INSERT INTO orders_demo.tbl__hourly_order_volume__dep
-            WITH cutoff_offsets AS (
-                SELECT 0 AS _replay_partition, 9709 AS cutoff_offset,
-                       true AS cutoff_inclusive
-            ),
-            active_start_offsets AS (
-                SELECT 0 AS _replay_partition, 9000 AS start_offset
-            )
             SELECT
                 CAST(toStartOfHour(_replay_timestamp) AS DateTime64(3)) AS event_hour,
                 CAST(category AS String) AS category,
@@ -73,24 +66,10 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
             FROM (
                 SELECT anchor.*
                 FROM orders_demo.tbl__order_items AS anchor
-                INNER JOIN cutoff_offsets
-                    ON anchor._replay_partition = cutoff_offsets._replay_partition
-                LEFT JOIN active_start_offsets
-                    ON anchor._replay_partition =
-                       active_start_offsets._replay_partition
                 WHERE (
-                    (
-                        cutoff_offsets.cutoff_inclusive
-                        AND anchor._replay_offset <= cutoff_offsets.cutoff_offset
-                    )
-                    OR (
-                        NOT cutoff_offsets.cutoff_inclusive
-                        AND anchor._replay_offset < cutoff_offsets.cutoff_offset
-                    )
-                )
-                  AND (
-                    active_start_offsets.start_offset IS NULL
-                    OR anchor._replay_offset >= active_start_offsets.start_offset
+                    anchor._replay_partition = 0
+                    AND anchor._replay_offset <= 9709
+                    AND anchor._replay_offset >= 9000
                   )
             ) AS item_rows
             WHERE status = 'created'
@@ -120,42 +99,22 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
             expected_statement=dedent(
                 """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
-            WITH cutoff_offsets AS (
-                SELECT 0 AS _replay_partition, 9709 AS cutoff_offset,
-                       true AS cutoff_inclusive
-            ),
-            active_start_offsets AS (
-                SELECT 0 AS _replay_partition, 9000 AS start_offset
-            )
-            SELECT replay_source.*
+            SELECT
+                CAST(o.order_id AS String) AS order_id,
+                CAST(r.region_display AS String) AS region_display,
+                CAST(o._replay_partition AS Int64) AS _replay_partition,
+                CAST(o._replay_offset AS Int64) AS _replay_offset
             FROM (
-                SELECT
-                    CAST(o.order_id AS String) AS order_id,
-                    CAST(r.region_display AS String) AS region_display,
-                    CAST(o._replay_partition AS Int64) AS _replay_partition,
-                    CAST(o._replay_offset AS Int64) AS _replay_offset
-                FROM orders_demo.tbl__orders__dep AS o
-                LEFT JOIN orders_demo.tbl__region_lookup__dep AS r
-                    ON o.order_id = r.region
-            ) AS replay_source
-            INNER JOIN cutoff_offsets
-                ON replay_source._replay_partition = cutoff_offsets._replay_partition
-            LEFT JOIN active_start_offsets
-                ON replay_source._replay_partition = active_start_offsets._replay_partition
-            WHERE (
-                (
-                    cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset <= cutoff_offsets.cutoff_offset
-                )
-                OR (
-                    NOT cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset < cutoff_offsets.cutoff_offset
-                )
-            )
-              AND (
-                active_start_offsets.start_offset IS NULL
-                OR replay_source._replay_offset >= active_start_offsets.start_offset
-              )
+                SELECT anchor.*
+                FROM orders_demo.tbl__orders__dep AS anchor
+                WHERE (
+                    anchor._replay_partition = 0
+                    AND anchor._replay_offset <= 9709
+                    AND anchor._replay_offset >= 9000
+                  )
+            ) AS o
+            LEFT JOIN orders_demo.tbl__region_lookup__dep AS r
+                ON o.order_id = r.region
             """
             ).strip(),
             replay_table_name_by_logical_name={
@@ -182,42 +141,22 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
             expected_statement=dedent(
                 """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
-            WITH cutoff_offsets AS (
-                SELECT 0 AS _replay_partition, 9709 AS cutoff_offset,
-                       true AS cutoff_inclusive
-            ),
-            active_start_offsets AS (
-                SELECT 0 AS _replay_partition, 9000 AS start_offset
-            )
-            SELECT replay_source.*
+            SELECT
+                CAST(o.order_id AS String) AS order_id,
+                CAST(r.region_display AS String) AS region_display,
+                CAST(o._replay_partition AS Int64) AS _replay_partition,
+                CAST(o._replay_offset AS Int64) AS _replay_offset
             FROM (
-                SELECT
-                    CAST(o.order_id AS String) AS order_id,
-                    CAST(r.region_display AS String) AS region_display,
-                    CAST(o._replay_partition AS Int64) AS _replay_partition,
-                    CAST(o._replay_offset AS Int64) AS _replay_offset
-                FROM orders_demo.tbl__orders__dep AS o
-                LEFT JOIN orders_demo.tbl__region_lookup AS r
-                    ON o.order_id = r.region
-            ) AS replay_source
-            INNER JOIN cutoff_offsets
-                ON replay_source._replay_partition = cutoff_offsets._replay_partition
-            LEFT JOIN active_start_offsets
-                ON replay_source._replay_partition = active_start_offsets._replay_partition
-            WHERE (
-                (
-                    cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset <= cutoff_offsets.cutoff_offset
-                )
-                OR (
-                    NOT cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset < cutoff_offsets.cutoff_offset
-                )
-            )
-              AND (
-                active_start_offsets.start_offset IS NULL
-                OR replay_source._replay_offset >= active_start_offsets.start_offset
-              )
+                SELECT anchor.*
+                FROM orders_demo.tbl__orders__dep AS anchor
+                WHERE (
+                    anchor._replay_partition = 0
+                    AND anchor._replay_offset <= 9709
+                    AND anchor._replay_offset >= 9000
+                  )
+            ) AS o
+            LEFT JOIN orders_demo.tbl__region_lookup AS r
+                ON o.order_id = r.region
             """
             ).strip(),
             replay_table_name_by_logical_name={
@@ -244,45 +183,25 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
             expected_statement=dedent(
                 """
             INSERT INTO orders_demo.tbl__enriched_orders__dep
-            WITH cutoff_offsets AS (
-                SELECT 0 AS _replay_partition, 9709 AS cutoff_offset,
-                       true AS cutoff_inclusive
-            ),
-            active_start_offsets AS (
-                SELECT 0 AS _replay_partition, 9000 AS start_offset
-            )
-            SELECT replay_source.*
+            SELECT
+                CAST(o.order_id AS String) AS order_id,
+                CAST(r.region_display AS String) AS region_display,
+                CAST(c.tier_name AS String) AS tier_name,
+                CAST(o._replay_partition AS Int64) AS _replay_partition,
+                CAST(o._replay_offset AS Int64) AS _replay_offset
             FROM (
-                SELECT
-                    CAST(o.order_id AS String) AS order_id,
-                    CAST(r.region_display AS String) AS region_display,
-                    CAST(c.tier_name AS String) AS tier_name,
-                    CAST(o._replay_partition AS Int64) AS _replay_partition,
-                    CAST(o._replay_offset AS Int64) AS _replay_offset
-                FROM orders_demo.tbl__orders__dep AS o
-                LEFT JOIN orders_demo.tbl__region_lookup__dep AS r
-                    ON o.order_id = r.region
-                LEFT JOIN orders_demo.tbl__customer_tier AS c
-                    ON o.order_id = c.customer_id
-            ) AS replay_source
-            INNER JOIN cutoff_offsets
-                ON replay_source._replay_partition = cutoff_offsets._replay_partition
-            LEFT JOIN active_start_offsets
-                ON replay_source._replay_partition = active_start_offsets._replay_partition
-            WHERE (
-                (
-                    cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset <= cutoff_offsets.cutoff_offset
-                )
-                OR (
-                    NOT cutoff_offsets.cutoff_inclusive
-                    AND replay_source._replay_offset < cutoff_offsets.cutoff_offset
-                )
-            )
-              AND (
-                active_start_offsets.start_offset IS NULL
-                OR replay_source._replay_offset >= active_start_offsets.start_offset
-              )
+                SELECT anchor.*
+                FROM orders_demo.tbl__orders__dep AS anchor
+                WHERE (
+                    anchor._replay_partition = 0
+                    AND anchor._replay_offset <= 9709
+                    AND anchor._replay_offset >= 9000
+                  )
+            ) AS o
+            LEFT JOIN orders_demo.tbl__region_lookup__dep AS r
+                ON o.order_id = r.region
+            LEFT JOIN orders_demo.tbl__customer_tier AS c
+                ON o.order_id = c.customer_id
             SETTINGS max_block_size = 32, max_threads = 8
             """
             ).strip(),
@@ -367,38 +286,30 @@ def test_given_offset_replay_query_when_rendering_then_it_rewrites_anchor_and_re
                 "INNER JOIN orders_existing AS right_orders "
                 "ON left_orders.order_id = right_orders.order_id"
             ),
-            filter_boundaries_at_source=False,
-            expected_inclusive_cte_fragment=(
-                "0 AS _replay_partition, 10 AS cutoff_offset, TRUE AS cutoff_inclusive"
+            expected_inclusive_predicate=(
+                "anchor.event_partition = 0 AND anchor.event_offset <= 10 "
+                "AND anchor.event_offset >= 5"
             ),
-            expected_exclusive_cte_fragment=(
-                "1 AS _replay_partition, 20 AS cutoff_offset, FALSE AS cutoff_inclusive"
+            expected_exclusive_predicate=(
+                "anchor.event_partition = 1 AND anchor.event_offset < 20"
             ),
-            expected_partition_predicate=(
-                "anchor.event_partition = cutoff_offsets._replay_partition"
-            ),
-            expected_offset_predicate=("anchor.event_offset <= cutoff_offsets.cutoff_offset"),
             expected_source_fragment="FROM orders_demo.orders_existing AS anchor",
             expected_occurrence_count=2,
-            expected_absent_fragment="anchor._replay_offset",
+            expected_absent_fragment="cutoff_offsets",
         ),
         RenderSourceFilteredOffsetPhysicalBoundaryTestCase(
             description="filters a non-lineage model at its preserved source",
             query="SELECT CAST(order_id AS UInt64) AS order_id FROM orders_existing",
-            filter_boundaries_at_source=True,
-            expected_inclusive_cte_fragment=(
-                "0 AS _replay_partition, 10 AS cutoff_offset, TRUE AS cutoff_inclusive"
+            expected_inclusive_predicate=(
+                "anchor.event_partition = 0 AND anchor.event_offset <= 10 "
+                "AND anchor.event_offset >= 5"
             ),
-            expected_exclusive_cte_fragment=(
-                "1 AS _replay_partition, 20 AS cutoff_offset, FALSE AS cutoff_inclusive"
+            expected_exclusive_predicate=(
+                "anchor.event_partition = 1 AND anchor.event_offset < 20"
             ),
-            expected_partition_predicate=(
-                "anchor.event_partition = cutoff_offsets._replay_partition"
-            ),
-            expected_offset_predicate="anchor.event_offset <= cutoff_offsets.cutoff_offset",
             expected_source_fragment="FROM orders_demo.orders_existing AS anchor",
             expected_occurrence_count=1,
-            expected_absent_fragment="replay_source._replay_partition",
+            expected_absent_fragment="cutoff_offsets",
         ),
     ],
     ids=lambda case: case.description,
@@ -457,20 +368,17 @@ def test_given_source_filtered_offset_replay_when_rendering_then_the_physical_in
             ),
             seed_mode=AdapterReplaySeedMode.NONE,
             target_column_names=(),
-            filter_boundaries_at_source=test_case.filter_boundaries_at_source,
         ),
         lower_bound_rows=(ClickHouseReplayOffsetFrontier(partition=0, cutoff_offset="5"),),
     )
     normalized_statement: str = normalize_clickhouse_sql(rendered_statement)
 
-    assert test_case.expected_inclusive_cte_fragment in normalized_statement
-    assert test_case.expected_exclusive_cte_fragment in normalized_statement
     assert (
-        normalized_statement.count(test_case.expected_partition_predicate)
+        normalized_statement.count(test_case.expected_inclusive_predicate)
         == test_case.expected_occurrence_count
     )
     assert (
-        normalized_statement.count(test_case.expected_offset_predicate)
+        normalized_statement.count(test_case.expected_exclusive_predicate)
         == test_case.expected_occurrence_count
     )
     assert (
