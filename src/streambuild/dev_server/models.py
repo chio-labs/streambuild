@@ -219,6 +219,21 @@ class RelationStorage:
     bytes: int = 0
 
 
+@dataclass(frozen=True)
+class BuildCancellationOutcome:
+    """Terminal evidence from one server-owned build cancellation attempt."""
+
+    invocation_id: str
+    query_id: str | None
+    requested_at: str
+    status: Literal["cancelled", "cancellation_failed"]
+    process_exit_code: int
+    warehouse_supported: bool | None
+    query_found: bool | None
+    warehouse_termination_confirmed: bool | None
+    error_message: str | None = None
+
+
 class DeploymentCleanupRequest(BaseModel):
     """Janitor apply request from the development UI."""
 

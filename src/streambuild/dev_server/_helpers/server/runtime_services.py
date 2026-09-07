@@ -13,6 +13,9 @@ from streambuild.dev_server._helpers.payloads.state_payload import (
     build_topics_payload,
 )
 from streambuild.dev_server.classes.audit_scheduler import AuditScheduler
+from streambuild.dev_server.classes.build_cancellation_coordinator import (
+    BuildCancellationCoordinator,
+)
 from streambuild.dev_server.classes.build_process import BuildProcessManager
 from streambuild.dev_server.classes.dev_server_state import DevServerState
 from streambuild.dev_server.classes.kafka_lag_reader import KafkaLagReader
@@ -38,8 +41,14 @@ def build_runtime_services(
 ) -> tuple[BuildProcessManager, KafkaLagReader, KafkaTopicReader, AuditScheduler, SensorScheduler]:
     """Build process, broker, audit, and sensor runtime services as one bundle."""
 
+    cancellation: BuildCancellationCoordinator = BuildCancellationCoordinator(
+        warehouse=warehouse, database=database
+    )
     builds: BuildProcessManager = BuildProcessManager(
-        reporter=reporter, execution_context=execution_context
+        reporter=reporter,
+        execution_context=execution_context,
+        query_canceller=cancellation.cancel_query,
+        cancellation_reporter=cancellation.record_outcome,
     )
     kafka_lag_reader: KafkaLagReader = KafkaLagReader()
     kafka_topic_reader: KafkaTopicReader = KafkaTopicReader()

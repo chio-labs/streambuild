@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -7,6 +8,29 @@ class BuildCancellationStateTestCase:
     invocation_id: str
     expected_cancel_status: str
     expected_force_available: bool
+
+
+@dataclass(frozen=True)
+class BuildWarehouseCancellationTestCase:
+    description: str
+    invocation_id: str
+    query_id: str
+    termination_confirmed: bool
+    cancellation_detail: str | None
+    expected_terminal_status: str
+    expected_error: str | None
+
+
+@dataclass(frozen=True)
+class BuildCancellationPersistenceTestCase:
+    description: str
+    invocation_id: str
+    query_id: str
+    outcome_status: Literal["cancelled", "cancellation_failed"]
+    termination_confirmed: bool
+    error_message: str | None
+    expected_event_kind: str
+    expected_sequence: int
 
 
 @dataclass(frozen=True)

@@ -41,6 +41,7 @@ export type RunDetailView = {
 	record: RunRecord | null;
 	commandLine: string;
 	loadError: string | null;
+	cancellationError: string | null;
 	pollError: string | null;
 	notFound: boolean;
 	initialLoading: boolean;

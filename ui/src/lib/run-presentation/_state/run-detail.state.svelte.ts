@@ -35,6 +35,7 @@ export function createRunDetailState(
 		record: null,
 		commandLine: 'build',
 		loadError: null,
+		cancellationError: null,
 		pollError: null,
 		notFound: false,
 		initialLoading: true
@@ -84,6 +85,7 @@ export function createRunDetailState(
 			record: null,
 			commandLine: 'build',
 			loadError: null,
+			cancellationError: null,
 			pollError: null,
 			notFound: false,
 			initialLoading: true
@@ -109,7 +111,10 @@ export function createRunDetailState(
 			view.status = feed.status ?? 'running';
 			view.lastSignalAgeSeconds = feed.lastSignalAgeSeconds;
 			view.statementProgress = feed.statementProgress;
-			view.running = view.status === 'running' || view.status === 'unresponsive';
+			view.running =
+				view.status === 'running' ||
+				view.status === 'unresponsive' ||
+				view.status === 'cancelling';
 			const ownership: BuildFeed = initial?.ownership ?? (await fetchBuildFeed(0));
 			if (!isActive(generation)) return;
 			view.owned =
@@ -184,6 +189,17 @@ export function createRunDetailState(
 	}
 
 	function applyOwnershipFallback(feed: RunEventFeed, ownership: BuildFeed): void {
+		if (
+			view.owned &&
+			(ownership.cancellationStatus === 'cancelling' ||
+				ownership.cancellationStatus === 'cancellation_failed')
+		) {
+			view.status = ownership.cancellationStatus;
+			view.running = ownership.running;
+			view.forceAvailable = ownership.forceAvailable;
+			view.cancellationError = ownership.cancellationError ?? null;
+			return;
+		}
 		if (view.owned && !feed.found) {
 			view.exitCode = ownership.exitCode;
 			view.running = ownership.running;
@@ -216,6 +232,10 @@ export function createRunDetailState(
 				view.ownerInvocationId ?? invocationId
 			);
 			view.forceAvailable = Boolean(result.forceAvailable);
+			if (result.status === 'cancelling' || result.status === 'cancellation_failed') {
+				view.status = result.status;
+				view.running = true;
+			}
 		} catch (error) {
 			view.loadError = error instanceof Error ? error.message : String(error);
 		} finally {
