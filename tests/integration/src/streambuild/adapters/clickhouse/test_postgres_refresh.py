@@ -144,7 +144,7 @@ def test_given_scheduled_relation_when_loading_refresh_states_then_status_is_rep
             description="a refreshable view pulls real rows out of real postgres",
             source_table="course",
             refresh="1 HOUR",
-            expected_rows=(("web_orders::7", "GBR"), ("partner_orders::10", "JPN")),
+            expected_rows=(("partner_orders::10", "JPN"), ("web_orders::7", "GBR")),
         )
     ],
     ids=lambda case: case.description,

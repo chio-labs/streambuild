@@ -2064,7 +2064,7 @@ def test_given_adopted_source_when_building_direct_then_source_is_preserved_and_
         CliDirectPostgresRefreshIntegrationTestCase(
             description="direct build retains postgres refresh scheduling through execution",
             refresh="1 MINUTE",
-            expected_rows=(("web_orders::7", "GBR"), ("partner_orders::10", "JPN")),
+            expected_rows=(("partner_orders::10", "JPN"), ("web_orders::7", "GBR")),
         )
     ],
     ids=lambda case: case.description,
