@@ -145,7 +145,7 @@ from tests.integration.src.streambuild.dev_server.helpers import (
             description="key prefix matches only keys starting with the literal",
             request_json={
                 "limit": 10,
-                "predicates": [{"field": "key", "op": "prefix", "value": "Order"}],
+                "predicates": [{"field": "key", "op": "prefix", "value": "OrderCreated"}],
             },
             expected_coordinates=((0, 2), (0, 1)),
             expected_window_seconds=None,
