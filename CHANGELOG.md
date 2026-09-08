@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.2](https://github.com/chio-labs/streambuild/compare/v0.40.1...v0.40.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* update public defaults and examples ([0160843](https://github.com/chio-labs/streambuild/commit/01608432ac0614ff7dc3f153f22d1d57ae6b6046))
+
 ## [0.40.1](https://github.com/chio-labs/streambuild/compare/v0.40.0...v0.40.1) (2026-09-07)
 
 
