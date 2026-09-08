@@ -27,8 +27,8 @@ function event(displayName: string | null): RunEvent {
 
 describe('destruction run labels', () => {
 	it('given a current destruction event when labeling then shows the affected relation', () => {
-		expect(labelRunEvent(event('Drop table default.commerce__tbl_orders__web_orders'), context)).toBe(
-			'Drop table default.commerce__tbl_orders__web_orders'
+		expect(labelRunEvent(event('Drop table default.commerce__tbl_orders__partner'), context)).toBe(
+			'Drop table default.commerce__tbl_orders__partner'
 		);
 		expect(labelRunPhase('teardown')).toBe('remove');
 	});

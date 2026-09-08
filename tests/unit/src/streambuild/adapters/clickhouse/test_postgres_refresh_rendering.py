@@ -97,7 +97,9 @@ def test_given_credential_placeholder_when_rendering_then_the_secret_is_resolved
         f"{test_case.variable_name}"
         f"{ADAPTER_SECRET_PLACEHOLDER_SUFFIX}"
     )
-    query: str = f"SELECT * FROM postgresql('pg:5432', 'inventory', 'course', 'ro', '{placeholder}')"
+    query: str = (
+        f"SELECT * FROM postgresql('pg:5432', 'inventory', 'course', 'ro', '{placeholder}')"
+    )
     resource: AdapterMaterializedView = AdapterMaterializedView(
         name="mv__pg__course",
         source_relation_name="inventory__course",
