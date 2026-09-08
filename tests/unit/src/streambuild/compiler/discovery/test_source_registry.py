@@ -902,14 +902,14 @@ def test_given_freshness_config_when_discovering_then_returns_expected_policy(
             sources:
               - name: inventory__course
                 kind: postgres
-                host: inventory-db.pipeline.streambuild
+                host: warehouse.example.com
                 database: inventory
                 table: course
                 user: readonly
                 password_env: INVENTORY_READONLY_PASSWORD
                 refresh: 1 HOUR
             """,
-            expected_host="inventory-db.pipeline.streambuild",
+            expected_host="warehouse.example.com",
             expected_port=5432,
             expected_refresh="1 HOUR",
             expected_password_env="INVENTORY_READONLY_PASSWORD",

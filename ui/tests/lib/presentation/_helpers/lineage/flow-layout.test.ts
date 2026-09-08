@@ -32,7 +32,7 @@ function physicalNode(index: number): GraphNode {
 	};
 }
 
-function streambuildScaleFixture(): { project: Project; graph: Graph } {
+function largeScaleFixture(): { project: Project; graph: Graph } {
 	const nodes: GraphNode[] = Array.from({ length: PHYSICAL_NODE_COUNT }, (_, index) =>
 		physicalNode(index)
 	);
@@ -58,8 +58,8 @@ function streambuildScaleFixture(): { project: Project; graph: Graph } {
 }
 
 describe('lineage flow layout', () => {
-	it('given a StreamBuild-scale physical graph when laying out defaults then stays within budget', () => {
-		const { project, graph } = streambuildScaleFixture();
+	it('given a large-scale physical graph when laying out defaults then stays within budget', () => {
+		const { project, graph } = largeScaleFixture();
 		const groupKeyByNodeId: Map<string, string> = buildGroupKeyByNodeId(project, graph, true);
 		const started: number = performance.now();
 

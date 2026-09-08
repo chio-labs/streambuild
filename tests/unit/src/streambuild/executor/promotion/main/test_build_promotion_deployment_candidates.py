@@ -54,14 +54,14 @@ def test_given_partial_deployments_when_listing_candidates_then_only_complete_re
                 logical_model_name="orders",
             ),
             AdapterPreparedObjectMapping(
-                logical_key=AdapterMetadataObjectKey(None, "table", "prices"),
-                physical_name=f"orders__{partial_id}",
-                logical_model_name="prices",
+                logical_key=AdapterMetadataObjectKey(None, "table", "customers"),
+                physical_name=f"customers__{partial_id}",
+                logical_model_name="customers",
             ),
             AdapterPreparedObjectMapping(
-                logical_key=AdapterMetadataObjectKey(None, "materialized_view", "mv__prices"),
-                physical_name=f"mv__orders__{partial_id}",
-                logical_model_name="prices",
+                logical_key=AdapterMetadataObjectKey(None, "materialized_view", "mv__customers"),
+                physical_name=f"mv__customers__{partial_id}",
+                logical_model_name="customers",
             ),
         ),
     )
@@ -79,14 +79,14 @@ def test_given_partial_deployments_when_listing_candidates_then_only_complete_re
                 logical_model_name="orders",
             ),
             AdapterPreparedObjectMapping(
-                logical_key=AdapterMetadataObjectKey(None, "table", "prices"),
-                physical_name=f"orders__{complete_id}",
-                logical_model_name="prices",
+                logical_key=AdapterMetadataObjectKey(None, "table", "customers"),
+                physical_name=f"customers__{complete_id}",
+                logical_model_name="customers",
             ),
             AdapterPreparedObjectMapping(
-                logical_key=AdapterMetadataObjectKey(None, "materialized_view", "mv__prices"),
-                physical_name=f"mv__orders__{complete_id}",
-                logical_model_name="prices",
+                logical_key=AdapterMetadataObjectKey(None, "materialized_view", "mv__customers"),
+                physical_name=f"mv__customers__{complete_id}",
+                logical_model_name="customers",
             ),
         ),
     )
@@ -94,11 +94,11 @@ def test_given_partial_deployments_when_listing_candidates_then_only_complete_re
         relations=tuple(
             CatalogRelation(name=name, engine="MergeTree", columns=())
             for name in (
-                f"orders__{partial_id}",
+                f"customers__{partial_id}",
                 f"orders__{partial_id}",
                 f"orders__{complete_id}",
-                f"orders__{complete_id}",
-                f"mv__orders__{complete_id}",
+                f"customers__{complete_id}",
+                f"mv__customers__{complete_id}",
             )
         ),
         managed_table_state=InspectedManagedTableState(
@@ -109,7 +109,7 @@ def test_given_partial_deployments_when_listing_candidates_then_only_complete_re
                     logical_name=name,
                     physical_name=f"{name}__{partial_id}",
                 )
-                for name in ("orders", "prices")
+                for name in ("orders", "customers")
             ),
         ),
         deployment_inventory=AdapterDeploymentInventory(

@@ -118,7 +118,7 @@ from tests.unit.src.streambuild.dev_server.classes._test_types import (
             warehouse_now="2026-08-08 12:00:01.125",
         ),
         AuditScheduleCalculationTestCase(
-            description="pipeline scheduler process resolves the same missing-anchor slot",
+            description="audit scheduler process resolves the same missing-anchor slot",
             status_payloads=(),
             anchors_by_model={},
             warmup_anchor=None,
