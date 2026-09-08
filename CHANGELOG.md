@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.2](https://github.com/chio-labs/streambuild/compare/v0.40.1...v0.40.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* remove internal domain terminology ([7805b4e](https://github.com/chio-labs/streambuild/commit/7805b4ef3a13cae361fabeb42d1af35955cf0b32))
+
 ## [0.40.1](https://github.com/chio-labs/streambuild/compare/v0.40.0...v0.40.1) (2026-09-07)
 
 
