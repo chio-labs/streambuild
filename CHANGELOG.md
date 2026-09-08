@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.1](https://github.com/chio-labs/streambuild/compare/v0.41.0...v0.41.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* refresh public fixture ([3b747bb](https://github.com/chio-labs/streambuild/commit/3b747bb0ec917aab0bdf259f630b67097e046fbc))
+
 ## [0.41.0](https://github.com/chio-labs/streambuild/compare/v0.40.2...v0.41.0) (2026-09-08)
 
 
