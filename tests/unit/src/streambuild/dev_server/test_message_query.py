@@ -49,13 +49,13 @@ from tests.unit.src.streambuild.dev_server.helpers import build_expected_message
             request_json={
                 "predicates": [
                     {"field": "key", "op": "contains", "value": "Order"},
-                    {"field": "key", "op": "prefix", "value": "BetSet"},
+                    {"field": "key", "op": "prefix", "value": "Order"},
                 ]
             },
             window_seconds=None,
             expected_sql=build_expected_messages_sql(
                 where_clause=(
-                    " WHERE position(kafka_key, 'Order') > 0 AND startsWith(kafka_key, 'BetSet')"
+                    " WHERE position(kafka_key, 'Order') > 0 AND startsWith(kafka_key, 'Order')"
                 )
             ),
         ),

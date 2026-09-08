@@ -147,7 +147,7 @@ def test_given_active_partial_deployment_when_loading_inventory_then_it_is_physi
     test_case: PartialDeploymentInventoryTestCase,
 ) -> None:
     deployment_id = "20260806T000100Z_partial"
-    existing_name = f"orders__{deployment_id}"
+    existing_name = f"customers__{deployment_id}"
     missing_name = f"orders__{deployment_id}"
     client: RecordingAdapterConnection = RecordingAdapterConnection(
         relations=(CatalogRelation(name=existing_name, engine="MergeTree", columns=()),),

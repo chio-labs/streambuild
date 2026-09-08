@@ -365,7 +365,9 @@ def test_given_assigned_quality_role_when_reading_capabilities_then_coverage_is_
 ) -> None:
     client, store = build_assigned_proxy_quality_client(project_dir=tmp_path)
 
-    alice: dict = client.get("/api/auth/capabilities", headers={"X-StreamBuild-User": "alice"}).json()
+    alice: dict = client.get(
+        "/api/auth/capabilities", headers={"X-StreamBuild-User": "alice"}
+    ).json()
     bob: dict = client.get("/api/auth/capabilities", headers={"X-StreamBuild-User": "bob"}).json()
 
     assert alice["systemAdmin"] is False
