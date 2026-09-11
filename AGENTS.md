@@ -21,6 +21,25 @@ revision will fail before tests start.
 - Before committing, confirm `uvx --from uv@0.12.3 uv sync --locked --all-groups`
   succeeds and that `git diff -- uv.lock` contains only intentional changes.
 
+## Public Repository Hygiene
+
+- Treat every tracked file, generated artifact, fixture, benchmark, filename, commit, branch, pull
+  request, review comment, screenshot, and CI log as publicly visible.
+- Use only neutral synthetic examples such as orders, customers, products, inventory, fulfillment,
+  support tickets, and product-owned identifiers. Never copy organization-, client-, provider-,
+  environment-, infrastructure-, or production-specific names, data, query output, identifiers, or
+  links into public artifacts, even when the source operation was read-only.
+- Keep real-system validation evidence in its approved private tracking location. Do not paste that
+  evidence into source, tests, documentation, generated skills, benchmarks, commit metadata, pull
+  requests, or CI output.
+- Load and follow the `public-repository-hygiene` skill before editing or publishing this repository.
+  Run its private scanner over the working tree and introduced history before every push, and
+  rescan after generation, formatting, rebasing, or merging.
+- Never bypass the configured public-repository Git hooks. A missing or failing private scanner is
+  a publication blocker.
+- Do not copy the private restricted-vocabulary list or scanner implementation into this public
+  repository.
+
 ## Delivery Workflow
 
 - Consolidate related work into one delivery branch and one pull request, even when it covers
