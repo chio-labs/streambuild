@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.3](https://github.com/chio-labs/streambuild/compare/v0.41.2...v0.41.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* retry incomplete ClickHouse catalog snapshots ([#247](https://github.com/chio-labs/streambuild/issues/247)) ([f622cf9](https://github.com/chio-labs/streambuild/commit/f622cf934354c704cb913c971885080d3b663dd3))
+
 ## [0.41.2](https://github.com/chio-labs/streambuild/compare/v0.41.1...v0.41.2) (2026-09-11)
 
 
