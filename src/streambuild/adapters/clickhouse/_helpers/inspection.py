@@ -1,5 +1,6 @@
 """Assemble a neutral catalog snapshot from ClickHouse system tables."""
 
+import time
 from collections.abc import Mapping
 from hashlib import sha256
 
@@ -30,6 +31,8 @@ from streambuild.adapters.clickhouse._helpers.catalog_parsing import (
     parse_sorting_key,
 )
 from streambuild.adapters.clickhouse.constants import (
+    CLICKHOUSE_CATALOG_LOAD_ATTEMPTS,
+    CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS,
     CLICKHOUSE_DEFAULT_INDEX_GRANULARITY,
     CLICKHOUSE_KAFKA_ENGINE,
     CLICKHOUSE_MATERIALIZED_VIEW_ENGINE,
@@ -56,10 +59,50 @@ def load_clickhouse_catalog(
     """Load one fixed-query ClickHouse catalog snapshot."""
 
     quoted_database: str = quote_clickhouse_sql_string(database)
+    attempt = 1
+    while True:
+        warehouse_timezone: str = _load_warehouse_timezone(connection=connection)
+        relation_rows: tuple[ClickHouseCatalogRelationRow, ...] = _load_catalog_relation_rows(
+            connection=connection,
+            quoted_database=quoted_database,
+        )
+        incomplete_relation_names: tuple[str, ...] = tuple(
+            row.name for row in relation_rows if not row.create_table_query.strip()
+        )
+        if not incomplete_relation_names:
+            column_rows: tuple[ClickHouseCatalogColumnRow, ...] = _load_catalog_column_rows(
+                connection=connection,
+                quoted_database=quoted_database,
+            )
+            return _build_catalog_snapshot(
+                adapter_identity=adapter_identity,
+                database=database,
+                warehouse_timezone=warehouse_timezone,
+                relation_rows=relation_rows,
+                column_rows=column_rows,
+            )
+        if attempt >= CLICKHOUSE_CATALOG_LOAD_ATTEMPTS:
+            names: str = ", ".join(sorted(incomplete_relation_names))
+            raise AdapterResultError(
+                f"ClickHouse catalog for database '{database}' remained incomplete after "
+                f"{CLICKHOUSE_CATALOG_LOAD_ATTEMPTS} attempts; missing CREATE statements for: "
+                f"{names}"
+            )
+        time.sleep(CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS * attempt)
+        attempt += 1
+
+
+def _load_warehouse_timezone(*, connection: AdapterConnection) -> str:
     timezone_rows: tuple[tuple[object, ...], ...] = connection.query("SELECT timezone()").rows
     if not timezone_rows:
         raise AdapterResultError("Could not determine ClickHouse server timezone")
-    relation_rows: tuple[ClickHouseCatalogRelationRow, ...] = connection.query_many(
+    return str(timezone_rows[0][0])
+
+
+def _load_catalog_relation_rows(
+    *, connection: AdapterConnection, quoted_database: str
+) -> tuple[ClickHouseCatalogRelationRow, ...]:
+    return connection.query_many(
         statement=(
             "SELECT name, engine, sorting_key, partition_key, create_table_query, as_select, "
             "toString(uuid) AS uuid "
@@ -67,13 +110,28 @@ def load_clickhouse_catalog(
         ),
         decode=_decode_relation_row,
     )
-    column_rows: tuple[ClickHouseCatalogColumnRow, ...] = connection.query_many(
+
+
+def _load_catalog_column_rows(
+    *, connection: AdapterConnection, quoted_database: str
+) -> tuple[ClickHouseCatalogColumnRow, ...]:
+    return connection.query_many(
         statement=(
             "SELECT table, name, type, default_expression FROM system.columns "
             f"WHERE database = {quoted_database} ORDER BY table, position"
         ),
         decode=_decode_column_row,
     )
+
+
+def _build_catalog_snapshot(
+    *,
+    adapter_identity: AdapterIdentity,
+    database: str,
+    warehouse_timezone: str,
+    relation_rows: tuple[ClickHouseCatalogRelationRow, ...],
+    column_rows: tuple[ClickHouseCatalogColumnRow, ...],
+) -> CatalogSnapshot:
     columns_by_relation: dict[str, list[CatalogColumn]] = {}
     column_row: ClickHouseCatalogColumnRow
     for column_row in column_rows:
@@ -86,7 +144,7 @@ def load_clickhouse_catalog(
         )
     return CatalogSnapshot(
         identity=CatalogIdentity(adapter=adapter_identity, database=database),
-        warehouse_timezone=str(timezone_rows[0][0]),
+        warehouse_timezone=warehouse_timezone,
         relations=tuple(
             _build_catalog_relation(
                 row=row,

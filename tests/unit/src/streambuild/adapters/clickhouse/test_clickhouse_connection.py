@@ -8,6 +8,7 @@ from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.exceptions import (
     AdapterAuthenticationError,
     AdapterRelationNotFoundError,
+    AdapterResultError,
     AdapterWarehouseError,
 )
 from streambuild.adapter.models import (
@@ -22,17 +23,21 @@ from streambuild.adapter.models import (
     CatalogRelation,
     CatalogSnapshot,
 )
+from streambuild.adapters.clickhouse._helpers import inspection
 from streambuild.adapters.clickhouse.classes.clickhouse_connection import ClickHouseConnection
 from streambuild.adapters.clickhouse.classes.warehouse_health_reader import (
     ClickHouseWarehouseHealthReader,
 )
 from streambuild.adapters.clickhouse.constants import (
     CLICKHOUSE_CAPACITY_WARNING_AVAILABLE_FRACTION,
+    CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS,
     CLICKHOUSE_UNKNOWN_CAPACITY_BYTES,
 )
 from streambuild.adapters.clickhouse.types import RawClickHouseClient
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
+    CatalogFailureTestCase,
     CatalogInspectionTestCase,
+    CatalogRetryTestCase,
     ClickHouseDropLimitTestCase,
     ClickHouseOptionalHealthFailureTestCase,
     ClickHousePublishCapabilitiesTestCase,
@@ -49,6 +54,9 @@ from tests.unit.src.streambuild.adapters.clickhouse.helpers import (
     FakeRawClickHouseQueryResult,
     SequencedRawClickHouseClient,
     StubRawClickHouseClient,
+    build_catalog_column_result,
+    build_catalog_relation_result,
+    build_catalog_timezone_result,
 )
 
 
@@ -486,6 +494,123 @@ def test_given_clickhouse_system_rows_when_loading_catalog_then_snapshot_is_comp
     assert binding.source_relation_name == "tbl__orders__dep_a"
     assert binding.query_sql == "SELECT * FROM analytics.tbl__orders__dep_a"
     assert len(raw_client.statements) == test_case.expected_query_count
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CatalogRetryTestCase(
+            description="transient incomplete catalog is reloaded as one fresh snapshot",
+            expected_query_count=5,
+            expected_delays=(CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS,),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_transient_empty_ddl_when_loading_catalog_then_retries_complete_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    test_case: CatalogRetryTestCase,
+) -> None:
+    delays: list[float] = []
+    monkeypatch.setattr(inspection.time, "sleep", delays.append)
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(create_table_query=""),
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(
+                create_table_query=(
+                    "CREATE TABLE analytics.tbl__orders (order_id UInt64) "
+                    "ENGINE = MergeTree ORDER BY order_id"
+                )
+            ),
+            build_catalog_column_result(),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    result: CatalogSnapshot = connection.load_catalog("analytics")
+
+    assert result.relation_names() == frozenset({"tbl__orders"})
+    assert len(raw_client.statements) == test_case.expected_query_count
+    assert delays == list(test_case.expected_delays)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CatalogFailureTestCase(
+            description="persistent incomplete catalog fails after bounded retries",
+            expected_query_count=6,
+            expected_delays=(
+                CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS,
+                CLICKHOUSE_CATALOG_RETRY_DELAY_SECONDS * 2,
+            ),
+            expected_error=(
+                "catalog for database 'analytics' remained incomplete after 3 attempts; "
+                "missing CREATE statements for: tbl__orders"
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_persistent_empty_ddl_when_loading_catalog_then_fails_after_bounded_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    test_case: CatalogFailureTestCase,
+) -> None:
+    delays: list[float] = []
+    monkeypatch.setattr(inspection.time, "sleep", delays.append)
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(create_table_query=""),
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(create_table_query=""),
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(create_table_query=""),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    with pytest.raises(AdapterResultError, match=test_case.expected_error):
+        connection.load_catalog("analytics")
+
+    assert len(raw_client.statements) == test_case.expected_query_count
+    assert delays == list(test_case.expected_delays)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CatalogFailureTestCase(
+            description="nonempty malformed catalog SQL remains a strict failure",
+            expected_query_count=3,
+            expected_delays=(),
+            expected_error="catalog SQL could not be parsed",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_nonempty_invalid_ddl_when_loading_catalog_then_fails_without_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    test_case: CatalogFailureTestCase,
+) -> None:
+    delays: list[float] = []
+    monkeypatch.setattr(inspection.time, "sleep", delays.append)
+    raw_client: SequencedRawClickHouseClient = SequencedRawClickHouseClient(
+        (
+            build_catalog_timezone_result(),
+            build_catalog_relation_result(create_table_query=";"),
+            build_catalog_column_result(),
+        )
+    )
+    connection: ClickHouseConnection = ClickHouseConnection(cast(RawClickHouseClient, raw_client))
+
+    with pytest.raises(AdapterResultError, match=test_case.expected_error):
+        connection.load_catalog("analytics")
+
+    assert len(raw_client.statements) == test_case.expected_query_count
+    assert delays == list(test_case.expected_delays)
 
 
 @pytest.mark.parametrize(
