@@ -185,6 +185,42 @@ class FailingRawClickHouseClient:
         raise self._error
 
 
+def build_catalog_relation_result(*, create_table_query: str) -> FakeRawClickHouseQueryResult:
+    return FakeRawClickHouseQueryResult(
+        column_names=[
+            "name",
+            "engine",
+            "sorting_key",
+            "partition_key",
+            "create_table_query",
+            "as_select",
+            "uuid",
+        ],
+        result_rows=[
+            [
+                "tbl__orders",
+                "MergeTree",
+                "order_id",
+                "",
+                create_table_query,
+                "",
+                "00000000-0000-0000-0000-000000000001",
+            ]
+        ],
+    )
+
+
+def build_catalog_timezone_result() -> FakeRawClickHouseQueryResult:
+    return FakeRawClickHouseQueryResult(column_names=["timezone()"], result_rows=[["UTC"]])
+
+
+def build_catalog_column_result() -> FakeRawClickHouseQueryResult:
+    return FakeRawClickHouseQueryResult(
+        column_names=["table", "name", "type", "default_expression"],
+        result_rows=[["tbl__orders", "order_id", "UInt64", ""]],
+    )
+
+
 def build_kafka_table(extra_settings: dict[str, str] | None = None) -> DesiredKafkaTable:
     return DesiredKafkaTable(
         key=ObjectKey(database=None, object_type="kafka_table", name="kafka__orders"),

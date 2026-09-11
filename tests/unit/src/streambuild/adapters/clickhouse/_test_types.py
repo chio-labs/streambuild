@@ -82,6 +82,21 @@ class CatalogInspectionTestCase:
 
 
 @dataclass(frozen=True)
+class CatalogRetryTestCase:
+    description: str
+    expected_query_count: int
+    expected_delays: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class CatalogFailureTestCase:
+    description: str
+    expected_query_count: int
+    expected_delays: tuple[float, ...]
+    expected_error: str
+
+
+@dataclass(frozen=True)
 class ClickHouseLandingSchemaTestCase:
     description: str
     expected_columns: tuple[tuple[str, str], ...]
