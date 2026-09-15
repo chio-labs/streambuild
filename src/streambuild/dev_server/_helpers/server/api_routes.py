@@ -170,7 +170,8 @@ def register_api_routes(
         )
 
     def refresh_warehouse() -> dict[str, object]:
-        warehouse.request_health_check()
+        if warehouse.connection is None:
+            _ = warehouse.connect_now()
         state.snapshot.invalidate()
         return read_status()
 

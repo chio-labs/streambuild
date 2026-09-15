@@ -34,6 +34,7 @@
 			}
 		}
 	});
+	const warehouseConnected = $derived(planLoader.warehouseConnected);
 	const planSelection = createPlanSelection({
 		currentUrl: () => page.url,
 		navigate(nextUrl): void {
@@ -775,10 +776,13 @@
 			</button>
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
-				title={buildAllowed
-					? "Runs these options in the dev server's pinned context"
+				title={!warehouseConnected
+					? 'Waiting for the warehouse connection'
+					: buildAllowed
+						? "Runs these options in the dev server's pinned context"
 					: 'Requires build.direct.run or deployment.create'}
 					disabled={executing ||
+					!warehouseConnected ||
 					planLoading ||
 					planError !== null ||
 					plan === null ||

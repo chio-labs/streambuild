@@ -1,8 +1,10 @@
 <script lang="ts">
 	import AppTopbar from '$lib/presentation/components/app-topbar.svelte';
 	import FactRow from '$lib/presentation/components/fact-row.svelte';
+	import ErrorView from '$lib/presentation/components/error-view.svelte';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { getProject } from '$lib/api/main/project/get-project';
+	import { formatClock } from '$lib/formatting/main/format-clock';
 
 	const app = getApp();
 	const project = getProject();
@@ -50,9 +52,19 @@
 			<FactRow label="target" value={project.target} />
 			<FactRow label="snapshot" value={project.capturedAt} />
 			{#if status && !status.warehouseConnected}
-				<div class="pt-2 font-mono text-[11px]" style:color="var(--sb-error)">
-					{status.warehouseError ?? 'The connection attempt has not completed.'}
-				</div>
+				<FactRow label="last attempt" value={formatClock(status.warehouseLastAttemptAt)} />
+				<FactRow label="next attempt" value={formatClock(status.warehouseNextAttemptAt)} />
+				<details class="pt-2 font-mono text-[11px]">
+					<summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+						Full connection error
+					</summary>
+					<div class="mt-2">
+						<ErrorView
+							text={status.warehouseError ?? 'The connection attempt has not completed.'}
+							maxHeight="13rem"
+						/>
+					</div>
+				</details>
 			{/if}
 		</div>
 

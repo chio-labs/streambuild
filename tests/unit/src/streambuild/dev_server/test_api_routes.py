@@ -185,8 +185,10 @@ def test_given_unreachable_warehouse_when_refreshing_then_ui_contract_remains_av
     tmp_path: Path,
 ) -> None:
     write_dev_server_project(project_dir=tmp_path)
+    connection_attempts: list[str] = []
 
     def fail_connection() -> AdapterConnection:
+        connection_attempts.append("attempted")
         raise RuntimeError("warehouse is starting")
 
     state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
@@ -206,8 +208,51 @@ def test_given_unreachable_warehouse_when_refreshing_then_ui_contract_remains_av
     assert refresh.status_code == 200
     assert refresh.json()["compile"]["state"] == test_case.expected_state
     assert refresh.json()["warehouse"]["connected"] is test_case.expected_warehouse_connected
+    assert connection_attempts == ["attempted"]
     assert client.get("/api/definitions").status_code == 200
     assert client.get("/api/state").status_code == 503
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        StatusEndpointTestCase(
+            description="explicit refresh immediately reconnects an available warehouse",
+            break_compile=False,
+            expected_state="ok",
+            expected_warehouse_connected=True,
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_available_warehouse_when_retrying_now_then_response_reports_reconnection(
+    test_case: StatusEndpointTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    connection: AdapterConnection = build_fake_state_connection()
+    connection_attempts: list[str] = []
+
+    def connect() -> AdapterConnection:
+        connection_attempts.append("attempted")
+        return connection
+
+    state: DevServerState = DevServerState(run_compile=build_compile_callable(project_dir=tmp_path))
+    client: TestClient = TestClient(
+        create_dev_app(
+            state=state,
+            database="analytics",
+            project_dir=tmp_path,
+            execution_context=DevExecutionContext(database="analytics", connection_factory=connect),
+        )
+    )
+
+    refresh: Response = client.post("/api/warehouse/refresh")
+
+    assert refresh.status_code == 200
+    assert refresh.json()["compile"]["state"] == test_case.expected_state
+    assert refresh.json()["warehouse"]["connected"] is test_case.expected_warehouse_connected
+    assert connection_attempts == ["attempted"]
 
 
 @pytest.mark.parametrize(
