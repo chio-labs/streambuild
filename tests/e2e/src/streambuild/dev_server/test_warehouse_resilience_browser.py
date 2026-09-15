@@ -53,10 +53,18 @@ def test_given_unreachable_warehouse_when_using_ui_then_snapshot_and_definitions
     expect(page.get_by_text("Warehouse unavailable.", exact=True)).to_be_visible()
     expect(
         page.get_by_text(
-            "Live ingest, freshness, catalog, deployment, and quality state cannot be read.",
+            "Planning and builds are paused because current warehouse state cannot be read.",
             exact=False,
         )
     ).to_be_visible()
+    expect(
+        page.get_by_text("Retry delays are capped at 30 seconds", exact=False)
+    ).to_be_visible()
+    technical_details: Locator = page.get_by_text("Technical details", exact=True)
+    technical_details.click()
+    expect(page.get_by_text("Last attempt:", exact=True)).to_be_visible()
+    expect(page.get_by_text("Next attempt:", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Copy full error", exact=True)).to_be_visible()
     expect(page.get_by_text("Project compile", exact=True)).to_be_visible()
     refresh: Locator = page.get_by_role("button", name="Refresh snapshot", exact=True)
     reload_definitions: Locator = page.get_by_role("button", name="Reload definitions", exact=True)
