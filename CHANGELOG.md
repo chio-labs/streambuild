@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.4](https://github.com/chio-labs/streambuild/compare/v0.41.3...v0.41.4) (2026-09-15)
+
+
+### Bug Fixes
+
+* clarify warehouse connection recovery ([#249](https://github.com/chio-labs/streambuild/issues/249)) ([44ea747](https://github.com/chio-labs/streambuild/commit/44ea7473283cd300f820902f7a0e04c0149ff427))
+
 ## [0.41.3](https://github.com/chio-labs/streambuild/compare/v0.41.2...v0.41.3) (2026-09-11)
 
 
