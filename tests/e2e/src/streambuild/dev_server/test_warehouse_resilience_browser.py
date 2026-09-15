@@ -57,9 +57,7 @@ def test_given_unreachable_warehouse_when_using_ui_then_snapshot_and_definitions
             exact=False,
         )
     ).to_be_visible()
-    expect(
-        page.get_by_text("Retry delays are capped at 30 seconds", exact=False)
-    ).to_be_visible()
+    expect(page.get_by_text("Retry delays are capped at 30 seconds", exact=False)).to_be_visible()
     technical_details: Locator = page.get_by_text("Technical details", exact=True)
     technical_details.click()
     expect(page.get_by_text("Last attempt:", exact=True)).to_be_visible()
