@@ -14,15 +14,12 @@
 	import ReplayWindowControl from '$lib/presentation/components/plan/replay-window.svelte';
 	import { startBuild } from '$lib/api/main/build/start-build';
 	import { getProject } from '$lib/api/main/project/get-project';
-	import { getApp } from '$lib/api/main/project/get-app';
 	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
 	import { canAnyPipeline } from '$lib/auth/main/can-any-pipeline';
 	import { createPlanView } from '$lib/plan-view/main/create-plan-view';
 	import { createPlanLoader } from '$lib/plan-view/main/create-plan-loader.svelte';
 	import { createPlanSelection } from '$lib/plan-view/main/create-plan-selection.svelte';
 	const project = getProject();
-	const app = getApp();
-	const warehouseConnected = $derived(app.status?.warehouseConnected ?? false);
 	const buildAllowed = $derived(canAnyPipeline('build.direct.run') || canAnyPipeline('deployment.create'));
 	const planView = createPlanView();
 	const planLoader = createPlanLoader({
@@ -37,6 +34,7 @@
 			}
 		}
 	});
+	const warehouseConnected = $derived(planLoader.warehouseConnected);
 	const planSelection = createPlanSelection({
 		currentUrl: () => page.url,
 		navigate(nextUrl): void {
@@ -72,7 +70,6 @@
 		});
 	}
 	let executing = $state<boolean>(false);
-	let previousWarehouseConnected = $state<boolean | null>(null);
 	let executeError = $state<string | null>(null);
 	let protectionConfirmations = $state<Record<string, string>>({});
 	const missingProtections = $derived(
@@ -101,10 +98,6 @@
 	);
 	const planStatus = $derived(planView.status({ planError, planLoading, plan }));
 	/** POST the planned options in the dev server's pinned context and follow the run live. */ async function execute(): Promise<void> {
-		if (!warehouseConnected) {
-			executeError = 'Waiting for the warehouse connection before starting this build.';
-			return;
-		}
 		executing = true;
 		executeError = null;
 		try {
@@ -136,11 +129,6 @@
 		requestPlan(tokens, changed, includeMissingUpstream, start, deploymentId, true);
 	}
 	$effect(() => () => planLoader.stop());
-	$effect(() => {
-		const recovered: boolean = previousWarehouseConnected === false && warehouseConnected;
-		previousWarehouseConnected = warehouseConnected;
-		if (recovered) replan();
-	});
 	$effect(() => {
 		const tokens: string[] = selectors.map(planView.selectorToken);
 		const start: string | null = planView.replayStartToken(replayWindow);

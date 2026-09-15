@@ -1,4 +1,6 @@
 import { fetchPlan } from '$lib/api/main/planning/fetch-plan';
+import { getApp } from '$lib/api/main/project/get-app';
+import type { AppState } from '$lib/api/types';
 import type { Plan } from '$lib/planning/types';
 
 type PlanLoadRequest = {
@@ -19,19 +21,25 @@ type PlanLoader = {
 	readonly error: string | null;
 	readonly loading: boolean;
 	readonly replayCountsLoading: boolean;
+	readonly warehouseConnected: boolean;
 	request(options: PlanLoadRequest): void;
 	stop(): void;
 };
 
 export function createPlanLoader(options: PlanLoaderOptions): PlanLoader {
+	const app: AppState = getApp();
 	let plan = $state<Plan | null>(null);
 	let error = $state<string | null>(null);
 	let loading = $state<boolean>(true);
 	let replayCountsLoading = $state<boolean>(false);
 	let requestVersion: number = 0;
 	let controller: AbortController | null = null;
+	let latestRequest = $state<PlanLoadRequest | null>(null);
+	let previousWarehouseConnected = $state<boolean | null>(null);
+	const warehouseConnected: boolean = $derived(app.status?.warehouseConnected ?? false);
 
 	function request(requestOptions: PlanLoadRequest): void {
+		latestRequest = requestOptions;
 		const currentVersion: number = ++requestVersion;
 		controller?.abort();
 		controller = new AbortController();
@@ -56,6 +64,12 @@ export function createPlanLoader(options: PlanLoaderOptions): PlanLoader {
 			});
 	}
 
+	$effect(() => {
+		const recovered: boolean = previousWarehouseConnected === false && warehouseConnected;
+		previousWarehouseConnected = warehouseConnected;
+		if (recovered && latestRequest !== null) request(latestRequest);
+	});
+
 	return {
 		get plan() {
 			return plan;
@@ -68,6 +82,9 @@ export function createPlanLoader(options: PlanLoaderOptions): PlanLoader {
 		},
 		get replayCountsLoading() {
 			return replayCountsLoading;
+		},
+		get warehouseConnected() {
+			return warehouseConnected;
 		},
 		request,
 		stop(): void {
