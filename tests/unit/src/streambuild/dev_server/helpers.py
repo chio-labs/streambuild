@@ -494,13 +494,19 @@ def build_target_reset_route_plan() -> DestructionPlan:
 
 _STATIC_INDEX_CONTENTS: str = "<html>stb-dev-shell</html>"
 _STATIC_APP_SCRIPT_CONTENTS: str = "console.log('stb-app-script');"
+_STATIC_IMMUTABLE_SCRIPT_CONTENTS: str = "console.log('stb-immutable-script');"
+_STATIC_VERSION_CONTENTS: str = '{"version":"example-version"}'
 _STATIC_ROBOTS_CONTENTS: str = "User-agent: *"
 
 
 def write_static_assets_build(*, assets_root: Path) -> None:
-    (assets_root / "_app").mkdir(parents=True)
+    (assets_root / "_app" / "immutable").mkdir(parents=True)
     (assets_root / "index.html").write_text(_STATIC_INDEX_CONTENTS)
     (assets_root / "_app" / "app.js").write_text(_STATIC_APP_SCRIPT_CONTENTS)
+    (assets_root / "_app" / "immutable" / "app.example.js").write_text(
+        _STATIC_IMMUTABLE_SCRIPT_CONTENTS
+    )
+    (assets_root / "_app" / "version.json").write_text(_STATIC_VERSION_CONTENTS)
     (assets_root / "robots.txt").write_text(_STATIC_ROBOTS_CONTENTS)
 
 

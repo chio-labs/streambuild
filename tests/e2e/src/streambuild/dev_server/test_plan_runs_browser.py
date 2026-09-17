@@ -113,7 +113,8 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     ):
         from_time.click()
     expect(page.get_by_label("Replay start time")).to_be_visible()
-    expect(page.get_by_label("Exact start time")).to_be_visible()
+    exact_start: Locator = page.get_by_role("button", name="Exact start time", exact=True)
+    expect(exact_start).to_be_visible()
     one_day: Locator = page.get_by_role("button", name="Replay the last 1 day", exact=True)
     expect(one_day).to_be_visible()
     with page.expect_response(
@@ -124,6 +125,43 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     ):
         one_day.click()
     expect(one_day).to_have_attribute("aria-pressed", "true")
+    preset_url: str = page.url
+    exact_start.click()
+    time_of_day: Locator = page.get_by_label("Replay start time of day", exact=True)
+    expect(time_of_day).to_be_visible()
+    expect(page.get_by_test_id("replay-time-zone")).to_have_text("UTC")
+    assert page.get_by_test_id("replay-date-time-popover").locator("[data-disabled]").count() > 0
+    time_of_day.fill("12:34")
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    expect(time_of_day).to_have_count(0)
+    expect(page).to_have_url(preset_url)
+    exact_start.click()
+    expect(time_of_day).to_be_visible()
+    time_of_day.fill("12:34")
+    execute: Locator = page.get_by_role("button", name="Execute", exact=True)
+    expect(execute).to_be_enabled()
+    held_apply_requests: list[Route] = []
+    page.route(plan_route_pattern, lambda route: held_apply_requests.append(route))
+    with page.expect_request(
+        lambda request: (
+            urlparse(request.url).path == "/api/plan"
+            and "start" in parse_qs(urlparse(request.url).query)
+        )
+    ):
+        page.get_by_role("button", name="Apply", exact=True).click()
+    expect(execute).to_be_disabled()
+    assert len(held_apply_requests) == 1
+    with page.expect_response(
+        lambda response: (
+            urlparse(response.url).path == "/api/plan"
+            and "start" in parse_qs(urlparse(response.url).query)
+        )
+    ):
+        held_apply_requests[0].continue_()
+    page.unroute(plan_route_pattern)
+    expect(execute).to_be_enabled()
+    assert len(held_apply_requests) == 1
+    expect(time_of_day).to_have_count(0)
     bounded_url: str = page.url
     bounded_query: dict[str, list[str]] = parse_qs(urlparse(bounded_url).query)
     assert bounded_query["select"] == [test_case.selector]
@@ -136,6 +174,7 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     page.reload(wait_until="domcontentloaded")
     expect(page).to_have_url(bounded_url)
     expect(page.get_by_label("Replay start time")).to_be_visible()
+    expect(page.get_by_role("button", name="Exact start time", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name=f"Remove {test_case.selector}")).to_be_visible()
 
     page.get_by_role("button", name=f"Remove {test_case.selector}").click()

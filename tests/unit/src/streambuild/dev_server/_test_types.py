@@ -391,6 +391,7 @@ class SpaFallbackTestCase:
     description: str
     request_path: str
     expected_body_fragment: str
+    expected_cache_control: str
 
 
 @dataclass(frozen=True)

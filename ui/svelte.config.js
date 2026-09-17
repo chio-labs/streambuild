@@ -10,6 +10,9 @@ const config = {
 		alias: {
 			'$ui-kit': './src/ui-kit'
 		},
+		version: {
+			pollInterval: 60_000
+		},
 		// SPA mode: static build, client-side routing, data fetched from the
 		// Python (FastAPI) Hub API at /api. No Node server in production —
 		// the built assets are served by the Python package.
