@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.6](https://github.com/chio-labs/streambuild/compare/v0.41.5...v0.41.6) (2026-09-17)
+
+
+### Bug Fixes
+
+* add bounded replay picker and safe UI caching ([#253](https://github.com/chio-labs/streambuild/issues/253)) ([ee7f004](https://github.com/chio-labs/streambuild/commit/ee7f004facdd5ea17979ce4b9be2cd7ebd1126c4))
+
 ## [0.41.5](https://github.com/chio-labs/streambuild/compare/v0.41.4...v0.41.5) (2026-09-17)
 
 
