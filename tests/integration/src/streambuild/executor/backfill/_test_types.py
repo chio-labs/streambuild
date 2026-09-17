@@ -79,6 +79,16 @@ class MissingOffsetReplayCutoffIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class NewSourcePostBoundaryArrivalIntegrationTestCase:
+    description: str
+    deployment_id: str
+    created_at: str
+    boundary_time: str
+    raw_row: tuple[object, ...]
+    expected_order_id: str
+
+
+@dataclass(frozen=True)
 class MissingScalarReplayCutoffIntegrationTestCase:
     description: str
     replay_lineage_mode: ReplayLineageMode

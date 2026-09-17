@@ -62,6 +62,7 @@ from tests.integration.src.streambuild.executor.backfill._test_types import (
     MissingCursorStartTimeIntegrationTestCase,
     MissingOffsetReplayCutoffIntegrationTestCase,
     MissingScalarReplayCutoffIntegrationTestCase,
+    NewSourcePostBoundaryArrivalIntegrationTestCase,
     PersistWatermarksWithoutMetadataTableIntegrationTestCase,
     ResolveAggregateUnsupportedReplayBehaviorIntegrationTestCase,
     StartTimeReplayScenarioResult,
@@ -104,9 +105,10 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
 
 
 class _InsertNewSourceRowBeforeAssertion:
-    def __init__(self, *, client: Client, table: str) -> None:
+    def __init__(self, *, client: Client, table: str, raw_row: tuple[object, ...]) -> None:
         self.client: Client = client
         self.table: str = table
+        self.raw_row: tuple[object, ...] = raw_row
         self.inserted: bool = False
 
     def workflow_prepared(
@@ -118,15 +120,7 @@ class _InsertNewSourceRowBeforeAssertion:
         if statement.step_id.startswith("assert_qualifying_input_") and not self.inserted:
             self.client.insert(
                 table=self.table,
-                data=[
-                    build_raw_orders_row(
-                        kafka_key="arrived-after-boundary",
-                        _replay_partition=0,
-                        _replay_offset=1,
-                        _replay_timestamp="2026-04-10 15:00:01.000",
-                        _replay_landed_at="2026-04-10 15:00:01.000",
-                    )
-                ],
+                data=[self.raw_row],
                 column_names=[
                     "kafka_key",
                     "kafka_value",
@@ -694,18 +688,39 @@ def test_given_nonempty_offset_input_without_cutoff_when_replaying_then_populati
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        NewSourcePostBoundaryArrivalIntegrationTestCase(
+            description="continues when a new source receives its first row after the boundary",
+            deployment_id="20260409T152000Z_startup",
+            created_at="2026-04-09 15:20:00.123",
+            boundary_time="2026-04-09 15:00:00.000",
+            raw_row=build_raw_orders_row(
+                kafka_key="arrived-after-boundary",
+                _replay_partition=0,
+                _replay_offset=1,
+                _replay_timestamp="2026-04-10 15:00:01.000",
+                _replay_landed_at="2026-04-10 15:00:01.000",
+            ),
+            expected_order_id="arrived-after-boundary",
+        )
+    ],
+    ids=lambda case: case.description,
+)
 def test_given_new_source_input_arrives_after_boundary_when_replaying_then_population_continues(
+    test_case: NewSourcePostBoundaryArrivalIntegrationTestCase,
     clickhouse_connection_settings: ClickHouseConnectionSettings,
     clickhouse_client: Client,
     clickhouse_database: str,
 ) -> None:
-    deployment_id: str = "20260409T152000Z_startup"
     compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
     source_resources: ManagedSourceResources = require_managed_source(compiled_pipeline)
     target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
-    emitter = _InsertNewSourceRowBeforeAssertion(
+    emitter: _InsertNewSourceRowBeforeAssertion = _InsertNewSourceRowBeforeAssertion(
         client=clickhouse_client,
         table=f"{clickhouse_database}.{source_resources.raw_table.name}",
+        raw_row=test_case.raw_row,
     )
     managed_client: AdapterConnection = ClickHouseAdapter().connect(
         AdapterConnectionConfig(
@@ -721,9 +736,9 @@ def test_given_new_source_input_arrives_after_boundary_when_replaying_then_popul
         result: BackfillExecutionResult = execute_backfill(
             request=build_offset_replay_request(
                 database=clickhouse_database,
-                deployment_id=deployment_id,
-                created_at="2026-04-09 15:20:00.123",
-                boundary_time="2026-04-09 15:00:00.000",
+                deployment_id=test_case.deployment_id,
+                created_at=test_case.created_at,
+                boundary_time=test_case.boundary_time,
             ),
             client=managed_client,
             emitter=emitter,
@@ -732,13 +747,14 @@ def test_given_new_source_input_arrives_after_boundary_when_replaying_then_popul
         managed_client.close()
 
     staged_rows: Sequence[Sequence[object]] = clickhouse_client.query(
-        f"SELECT order_id FROM {clickhouse_database}.{target_table_name}__{deployment_id} "
+        f"SELECT order_id FROM {clickhouse_database}.{target_table_name}__"
+        f"{test_case.deployment_id} "
         "ORDER BY order_id"
     ).result_rows
 
     assert emitter.inserted
     assert tuple(replay.written_rows for replay in result.replay_results) == (0,)
-    assert staged_rows == [("arrived-after-boundary",)]
+    assert staged_rows == [(test_case.expected_order_id,)]
 
 
 @pytest.mark.integration
