@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { getAuth } from '$lib/auth/main/get-auth';
 	import AppSidebar from '$lib/presentation/components/app-sidebar.svelte';
+	import AppVersionNotice from '$lib/presentation/components/app-version-notice.svelte';
 	import CompileErrorScreen from '$lib/presentation/components/compile-error-screen.svelte';
 	import { getApp } from '$lib/api/main/project/get-app';
 	import { initializeBootstrap } from '$lib/api/main/project/initialize-bootstrap';
@@ -69,3 +70,5 @@
 		</div>
 	</div>
 {/if}
+
+<AppVersionNotice />

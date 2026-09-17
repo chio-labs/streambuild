@@ -141,15 +141,6 @@ function formatDate(instant: string | null): string {
 	return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-/** `2026-08-02T12:04` — the value shape an `<input type="datetime-local">` wants. */
-function toDateTimeLocal(instant: string): string {
-	return parseUtc(instant).toISOString().slice(0, 16);
-}
-
-function fromDateTimeLocal(value: string): string {
-	return new Date(`${value}:00.000Z`).toISOString();
-}
-
 function formatRate(rowsPerSecond: number): string {
 	if (rowsPerSecond >= 1000) return `${(rowsPerSecond / 1000).toFixed(1)}k/s`;
 	if (rowsPerSecond >= 1) return `${Math.round(rowsPerSecond)}/s`;
@@ -188,8 +179,6 @@ export const domainFormatters = {
 	formatClock,
 	formatTimestamp,
 	formatDate,
-	toDateTimeLocal,
-	fromDateTimeLocal,
 	formatRate,
 	formatPercent,
 	formatEngineFamily,

@@ -1,12 +1,11 @@
 <script lang="ts">
 	import SpanTrack from '$lib/presentation/components/span-track.svelte';
+	import ReplayDateTimePicker from '$lib/presentation/components/plan/replay-date-time-picker.svelte';
 	import { clamp } from '$lib/formatting/main/clamp';
 	import { formatCompact } from '$lib/formatting/main/format-compact';
 	import { formatDaySpan } from '$lib/formatting/main/format-day-span';
 	import { formatTimestamp } from '$lib/formatting/main/format-timestamp';
-	import { fromDateTimeLocal } from '$lib/formatting/main/from-date-time-local';
 	import { parseUtc } from '$lib/formatting/main/parse-utc';
-	import { toDateTimeLocal } from '$lib/formatting/main/to-date-time-local';
 	import type { Project, Source } from '$lib/domain/types';
 	import type { ReplayWindow } from '$lib/planning/types';
 
@@ -175,19 +174,6 @@
 			milliseconds <= totalMs + 60_000 &&
 			Math.abs(effectiveStartMilliseconds - presetStartMilliseconds(milliseconds)) < 60_000
 		);
-	}
-
-	function setFromCalendar(value: string): void {
-		if (!value) return;
-		const iso: string = fromDateTimeLocal(value);
-		const clamped: Date = new Date(
-			clamp(
-				parseUtc(iso).getTime(),
-				parseUtc(boundFrom).getTime(),
-				parseUtc(boundTo).getTime()
-			)
-		);
-		onchange({ mode: 'from', startTime: clamped.toISOString() });
 	}
 
 	function enableStartTime(): void {
@@ -360,19 +346,13 @@
 							<span>less history</span>
 						</span>
 					</label>
-					<label class="block">
-						<span class="text-[var(--sb-text-faint)] mb-1 block font-mono text-[10px] uppercase tracking-[0.14em]">
-							Exact start time
-						</span>
-						<input
-							type="datetime-local"
-							value={toDateTimeLocal(startTime)}
-							min={toDateTimeLocal(boundFrom)}
-							max={toDateTimeLocal(boundTo)}
-							class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2 py-1.5 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
-							onchange={(event) => setFromCalendar(event.currentTarget.value)}
-						/>
-					</label>
+					<ReplayDateTimePicker
+						value={startTime}
+						minimum={boundFrom}
+						maximum={boundTo}
+						timeZone={project.timeZone}
+						onapply={(nextStartTime) => onchange({ mode: 'from', startTime: nextStartTime })}
+					/>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
