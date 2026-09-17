@@ -113,6 +113,17 @@ def test_given_retained_source_when_editing_plan_then_url_and_replay_contract_ro
     ):
         from_time.click()
     expect(page.get_by_label("Replay start time")).to_be_visible()
+    expect(page.get_by_label("Exact start time")).to_be_visible()
+    one_day: Locator = page.get_by_role("button", name="Replay the last 1 day", exact=True)
+    expect(one_day).to_be_visible()
+    with page.expect_response(
+        lambda response: (
+            urlparse(response.url).path == "/api/plan"
+            and "start" in parse_qs(urlparse(response.url).query)
+        )
+    ):
+        one_day.click()
+    expect(one_day).to_have_attribute("aria-pressed", "true")
     bounded_url: str = page.url
     bounded_query: dict[str, list[str]] = parse_qs(urlparse(bounded_url).query)
     assert bounded_query["select"] == [test_case.selector]

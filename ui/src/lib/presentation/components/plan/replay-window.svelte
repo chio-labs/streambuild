@@ -25,6 +25,18 @@
 		rowsToReplay: number | null;
 		onchange: (next: ReplayWindow) => void;
 	};
+	type ReplayPreset = {
+		label: string;
+		description: string;
+		milliseconds: number;
+	};
+	const replayPresets: ReplayPreset[] = [
+		{ label: '1h', description: '1 hour', milliseconds: 3_600_000 },
+		{ label: '6h', description: '6 hours', milliseconds: 6 * 3_600_000 },
+		{ label: '1d', description: '1 day', milliseconds: 86_400_000 },
+		{ label: '3d', description: '3 days', milliseconds: 3 * 86_400_000 },
+		{ label: '7d', description: '7 days', milliseconds: 7 * 86_400_000 }
+	];
 	let {
 		project,
 		sources,
@@ -134,6 +146,35 @@
 		// Snap to the minute — sub-minute precision is noise for a replay boundary.
 		instant.setUTCSeconds(0, 0);
 		onchange({ mode: 'from', startTime: instant.toISOString() });
+	}
+
+	function previewSlider(input: HTMLInputElement): void {
+		input.style.setProperty(
+			'--replay-start-position',
+			`${clamp(Number(input.value), 0, 1000) / 10}%`
+		);
+	}
+
+	function presetStartMilliseconds(milliseconds: number): number {
+		return clamp(
+			boundToMilliseconds - milliseconds,
+			retainedStartMilliseconds ?? boundToMilliseconds,
+			boundToMilliseconds
+		);
+	}
+
+	function setFromPreset(milliseconds: number): void {
+		onchange({
+			mode: 'from',
+			startTime: new Date(presetStartMilliseconds(milliseconds)).toISOString()
+		});
+	}
+
+	function isSelectedPreset(milliseconds: number): boolean {
+		return (
+			milliseconds <= totalMs + 60_000 &&
+			Math.abs(effectiveStartMilliseconds - presetStartMilliseconds(milliseconds)) < 60_000
+		);
 	}
 
 	function setFromCalendar(value: string): void {
@@ -271,24 +312,67 @@
 
 			{#if replayWindow.mode === 'from'}
 				<!-- slider + calendar, mutually bound; both clamped to the retention window -->
-				<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-					<input
-						type="range"
-						min="0"
-						max="1000"
-						value={sliderValue}
-						class="h-1 flex-1 cursor-pointer appearance-none rounded bg-[var(--sb-inset)] accent-[var(--primary)]"
-						aria-label="Replay start time"
-						onchange={(event) => setFromSlider(Number(event.currentTarget.value))}
-					/>
-					<input
-						type="datetime-local"
-						value={toDateTimeLocal(startTime)}
-						min={toDateTimeLocal(boundFrom)}
-						max={toDateTimeLocal(boundTo)}
-						class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2 py-1 font-mono text-[11px] outline-none focus:border-[var(--primary)] sm:w-auto"
-						onchange={(event) => setFromCalendar(event.currentTarget.value)}
-					/>
+				<div class="flex flex-col gap-3 rounded-[4px] border border-[var(--border-subtle)] p-2.5">
+					<div>
+						<div class="text-[var(--sb-text-faint)] pb-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+							Quick range
+						</div>
+						<div class="grid grid-cols-5 gap-1">
+							{#each replayPresets as preset (preset.label)}
+								<button
+									class="rounded-[3px] border px-1 py-1 font-mono text-[10.5px] transition-colors {isSelectedPreset(
+										preset.milliseconds
+									)
+										? 'border-[var(--primary)] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-foreground'
+										: 'border-border text-muted-foreground hover:bg-[var(--sb-hover)] hover:text-foreground'}"
+									aria-label={`Replay the last ${preset.description}`}
+									aria-pressed={isSelectedPreset(preset.milliseconds)}
+									title={preset.milliseconds > totalMs
+										? `${preset.description} exceeds retained history; the earliest retained time will be used`
+										: `Replay the last ${preset.description}`}
+									onclick={() => setFromPreset(preset.milliseconds)}
+								>
+									{preset.label}
+								</button>
+							{/each}
+						</div>
+					</div>
+					<label class="block">
+						<span class="text-[var(--sb-text-faint)] block font-mono text-[10px] uppercase tracking-[0.14em]">
+							Start position
+						</span>
+						<input
+							type="range"
+							min="0"
+							max="1000"
+							value={sliderValue}
+							class="replay-window-range mt-1.5 block w-full cursor-pointer"
+							style:--replay-start-position={`${sliderValue / 10}%`}
+							aria-label="Replay start time"
+							oninput={(event) => previewSlider(event.currentTarget)}
+							onchange={(event) => setFromSlider(Number(event.currentTarget.value))}
+						/>
+						<span
+							class="text-[var(--sb-text-faint)] flex justify-between pt-0.5 font-mono text-[9.5px]"
+							aria-hidden="true"
+						>
+							<span>more history</span>
+							<span>less history</span>
+						</span>
+					</label>
+					<label class="block">
+						<span class="text-[var(--sb-text-faint)] mb-1 block font-mono text-[10px] uppercase tracking-[0.14em]">
+							Exact start time
+						</span>
+						<input
+							type="datetime-local"
+							value={toDateTimeLocal(startTime)}
+							min={toDateTimeLocal(boundFrom)}
+							max={toDateTimeLocal(boundTo)}
+							class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2 py-1.5 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+							onchange={(event) => setFromCalendar(event.currentTarget.value)}
+						/>
+					</label>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
@@ -343,3 +427,63 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	.replay-window-range {
+		height: 20px;
+		appearance: none;
+		background: transparent;
+	}
+
+	.replay-window-range:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: 4px;
+	}
+
+	.replay-window-range::-webkit-slider-runnable-track {
+		height: 7px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: linear-gradient(
+			to right,
+			color-mix(in srgb, var(--muted-foreground) 28%, var(--sb-inset)) 0
+				var(--replay-start-position),
+			color-mix(in srgb, var(--sb-secondary) 72%, var(--sb-inset))
+				var(--replay-start-position) 100%
+		);
+	}
+
+	.replay-window-range::-webkit-slider-thumb {
+		width: 17px;
+		height: 17px;
+		margin-top: -6px;
+		appearance: none;
+		border: 2px solid var(--background);
+		border-radius: 999px;
+		background: var(--primary);
+		box-shadow: 0 0 0 1px var(--primary);
+	}
+
+	.replay-window-range::-moz-range-track {
+		height: 7px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: linear-gradient(
+			to right,
+			color-mix(in srgb, var(--muted-foreground) 28%, var(--sb-inset)) 0
+				var(--replay-start-position),
+			color-mix(in srgb, var(--sb-secondary) 72%, var(--sb-inset))
+				var(--replay-start-position) 100%
+		);
+	}
+
+	.replay-window-range::-moz-range-thumb {
+		width: 13px;
+		height: 13px;
+		border: 2px solid var(--background);
+		border-radius: 999px;
+		background: var(--primary);
+		box-shadow: 0 0 0 1px var(--primary);
+	}
+</style>

@@ -99,6 +99,7 @@ from streambuild.executor.workflow.models import (
     PublishedBuildWorkflow,
     WorkflowExecutionResult,
 )
+from streambuild.executor.workflow.types import WorkflowEventEmitter
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     build_compiled_example_pipeline,
     render_create_kafka_table_ddl,
@@ -129,7 +130,10 @@ LANDED_AT_REPLAY_PROJECTION: str = SCALAR_REPLAY_PROJECTION[ReplayLineageMode.LA
 
 
 def execute_backfill(
-    *, request: BackfillBootstrapRequest, client: AdapterConnection
+    *,
+    request: BackfillBootstrapRequest,
+    client: AdapterConnection,
+    emitter: WorkflowEventEmitter | None = None,
 ) -> BackfillExecutionResult:
     """Execute legacy preservation scenarios through published workflow authority."""
 
@@ -148,6 +152,7 @@ def execute_backfill(
     execution: WorkflowExecutionResult = _execute_test_workflow(
         client=client,
         workflow=workflow,
+        emitter=emitter,
     )
     return build_virtual_execution_result(
         request=confirmed_request,
@@ -233,7 +238,10 @@ def _prepare_backfill_request(
 
 
 def _execute_test_workflow(
-    *, client: AdapterConnection, workflow: BuildWorkflow
+    *,
+    client: AdapterConnection,
+    workflow: BuildWorkflow,
+    emitter: WorkflowEventEmitter | None = None,
 ) -> WorkflowExecutionResult:
     with TemporaryDirectory() as temporary_directory:
         published: PublishedBuildWorkflow = publish_build_workflow(
@@ -243,6 +251,7 @@ def _execute_test_workflow(
         return execute_build_workflow(
             published_workflow=published,
             connection=client,
+            emitter=emitter,
         )
 
 

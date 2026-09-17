@@ -433,7 +433,13 @@ def _replay_statements(
                 step_id=f"assert_qualifying_input_{segment}",
                 phase=WorkflowPhase.REPLAY,
                 intent=StatementIntent.ASSERTION,
-                sql=_qualifying_input_assertion_sql(request=request, replay=replay),
+                sql=_qualifying_input_assertion_sql(
+                    request=request,
+                    replay=replay,
+                    anchor_existed_at_confirmation=(
+                        target_catalog.relation(replay.relations.anchor) is not None
+                    ),
+                ),
             )
         )
         rendered: tuple[str, ...] = client.render_replay_from_deployment(
@@ -715,8 +721,13 @@ def _scalar_watermark_capture_sql(
 
 
 def _qualifying_input_assertion_sql(
-    *, request: BackfillBootstrapRequest, replay: AdapterReplayRequest
+    *,
+    request: BackfillBootstrapRequest,
+    replay: AdapterReplayRequest,
+    anchor_existed_at_confirmation: bool,
 ) -> str:
+    if not anchor_existed_at_confirmation:
+        return "SELECT 0;"
     if replay.mode == AdapterReplayBoundaryMode.OFFSETS:
         qualifying: str = (
             "SELECT count() FROM "
