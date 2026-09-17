@@ -106,45 +106,58 @@
 					loading accounts…
 				</div>
 			{:else}
-				<table class="sb-list w-full text-left">
-					<thead>
-						<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.14em]">
-							<th class="px-3 py-1.5 font-normal">User</th>
-							<th class="px-3 py-1.5 font-normal">Source</th>
-							<th class="px-3 py-1.5 font-normal">Roles</th>
-							<th class="px-3 py-1.5 font-normal">Status</th>
-						</tr>
-					</thead>
-					<tbody>
+				<div class="overflow-x-auto">
+					<div class="min-w-[620px]">
+						<div
+							class="text-[var(--sb-text-faint)] grid border-b border-border bg-[var(--sb-surface-low)] font-mono text-[10px] uppercase tracking-[0.14em]"
+							style:grid-template-columns="minmax(0,2fr) minmax(90px,1fr) minmax(90px,1fr) 90px"
+						>
+							<span class="border-r border-[var(--border-subtle)] px-3 py-1.5">User</span>
+							<span class="border-r border-[var(--border-subtle)] px-3 py-1.5">Source</span>
+							<span class="border-r border-[var(--border-subtle)] px-3 py-1.5">Roles</span>
+							<span class="px-3 py-1.5">Status</span>
+						</div>
 						{#each users.state.users as user (user.id)}
-							<tr
-								class="cursor-pointer border-t border-[var(--border-subtle)] hover:bg-[var(--sb-hover)]"
+							<button
+								type="button"
+								class="grid w-full cursor-pointer border-b border-[var(--border-subtle)] text-left hover:bg-[var(--sb-hover)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--ring)]"
 								style:background={user.id === users.state.selectedUserId
 									? 'var(--sb-hover)'
 									: undefined}
+								style:grid-template-columns="minmax(0,2fr) minmax(90px,1fr) minmax(90px,1fr) 90px"
+								aria-pressed={user.id === users.state.selectedUserId}
+								onclick={() => void users.selectUser(user.id, projectName)}
 							>
-								<td class="px-3 py-2">
-									<button
-										class="font-mono text-[12px]"
-										onclick={() => void users.selectUser(user.id, projectName)}
-									>
-										{user.username}
-									</button>
+								<span class="border-r border-[var(--border-subtle)] px-3 py-2.5">
+									<span class="sr-only">Select user: </span>
+									<span class="block font-mono text-[12px]">{user.username}</span>
 									{#if user.displayName || user.email}
-										<div class="text-[var(--sb-text-faint)] text-[10.5px]">
+										<span class="text-[var(--sb-text-faint)] block text-[10.5px]">
+											<span class="sr-only">{user.displayName ? 'Display name: ' : 'Email: '}</span>
 											{user.displayName ?? user.email}
-										</div>
+										</span>
 									{/if}
-								</td>
-								<td class="text-muted-foreground px-3 font-mono text-[10.5px]"
-									>{sourceLabel(user)}</td
+								</span>
+								<span
+									class="text-muted-foreground flex items-center border-r border-[var(--border-subtle)] px-3 font-mono text-[10.5px]"
+									data-testid={`user-row-source-${user.username}`}
 								>
-								<td class="px-3 font-mono text-[10.5px]">{user.roles.join(', ')}</td>
-								<td class="px-3">{@render statusDot(user.active)}</td>
-							</tr>
+									<span class="sr-only">Source: </span>
+									{sourceLabel(user)}
+								</span>
+								<span class="flex items-center border-r border-[var(--border-subtle)] px-3 font-mono text-[10.5px]">
+									<span class="sr-only">Roles: </span>
+									{user.roles.join(', ')}
+									{#if user.roles.length === 0}<span class="sr-only">none</span>{/if}
+								</span>
+								<span class="flex items-center px-3">
+									<span class="sr-only">Status: </span>
+									{@render statusDot(user.active)}
+								</span>
+							</button>
 						{/each}
-					</tbody>
-				</table>
+					</div>
+				</div>
 			{/if}
 		</div>
 

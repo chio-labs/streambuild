@@ -28,6 +28,7 @@ from streambuild.executor.backfill.models import (
 from streambuild.executor.promotion.main.execute_deployment_promotion import execute_publish
 from streambuild.executor.promotion.models import PublishRequest
 from streambuild.executor.workflow.exceptions import WorkflowExecutionError
+from streambuild.executor.workflow.models import WarehouseStatement
 from tests.integration.src.streambuild.adapters.clickhouse.helpers import (
     render_create_kafka_table_ddl,
     render_create_materialized_view_ddl,
@@ -100,6 +101,56 @@ from tests.integration.src.streambuild.executor.backfill.helpers import (
     run_bounded_preservation_matrix_scenario,
     run_start_time_replay_scenario,
 )
+
+
+class _InsertNewSourceRowBeforeAssertion:
+    def __init__(self, *, client: Client, table: str) -> None:
+        self.client: Client = client
+        self.table: str = table
+        self.inserted: bool = False
+
+    def workflow_prepared(
+        self, *, statements: tuple[WarehouseStatement, ...], workflow_sha256: str
+    ) -> None:
+        del statements, workflow_sha256
+
+    def statement_started(self, statement: WarehouseStatement) -> str | None:
+        if statement.step_id.startswith("assert_qualifying_input_") and not self.inserted:
+            self.client.insert(
+                table=self.table,
+                data=[
+                    build_raw_orders_row(
+                        kafka_key="arrived-after-boundary",
+                        _replay_partition=0,
+                        _replay_offset=1,
+                        _replay_timestamp="2026-04-10 15:00:01.000",
+                        _replay_landed_at="2026-04-10 15:00:01.000",
+                    )
+                ],
+                column_names=[
+                    "kafka_key",
+                    "kafka_value",
+                    "kafka_topic",
+                    "_replay_partition",
+                    "_replay_offset",
+                    "_replay_timestamp",
+                    "kafka_header_keys",
+                    "kafka_header_values",
+                    "_replay_landed_at",
+                ],
+            )
+            self.inserted = True
+        return None
+
+    def statement_completed(
+        self,
+        *,
+        statement: WarehouseStatement,
+        error_message: str | None,
+        written_rows: int | None,
+        elapsed_ms: int,
+    ) -> None:
+        del statement, error_message, written_rows, elapsed_ms
 
 
 @pytest.mark.integration
@@ -640,6 +691,54 @@ def test_given_nonempty_offset_input_without_cutoff_when_replaying_then_populati
             )
     finally:
         managed_client.close()
+
+
+@pytest.mark.integration
+def test_given_new_source_input_arrives_after_boundary_when_replaying_then_population_continues(
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    deployment_id: str = "20260409T152000Z_startup"
+    compiled_pipeline: CompiledPipeline = build_offset_replay_compiled_pipeline()
+    source_resources: ManagedSourceResources = require_managed_source(compiled_pipeline)
+    target_table_name: str = require_model_resources(compiled_pipeline).target_table_name
+    emitter = _InsertNewSourceRowBeforeAssertion(
+        client=clickhouse_client,
+        table=f"{clickhouse_database}.{source_resources.raw_table.name}",
+    )
+    managed_client: AdapterConnection = ClickHouseAdapter().connect(
+        AdapterConnectionConfig(
+            host=clickhouse_connection_settings.host,
+            port=clickhouse_connection_settings.port,
+            username=clickhouse_connection_settings.username,
+            password=clickhouse_connection_settings.password,
+            database=clickhouse_database,
+        )
+    )
+
+    try:
+        result: BackfillExecutionResult = execute_backfill(
+            request=build_offset_replay_request(
+                database=clickhouse_database,
+                deployment_id=deployment_id,
+                created_at="2026-04-09 15:20:00.123",
+                boundary_time="2026-04-09 15:00:00.000",
+            ),
+            client=managed_client,
+            emitter=emitter,
+        )
+    finally:
+        managed_client.close()
+
+    staged_rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        f"SELECT order_id FROM {clickhouse_database}.{target_table_name}__{deployment_id} "
+        "ORDER BY order_id"
+    ).result_rows
+
+    assert emitter.inserted
+    assert tuple(replay.written_rows for replay in result.replay_results) == (0,)
+    assert staged_rows == [("arrived-after-boundary",)]
 
 
 @pytest.mark.integration
