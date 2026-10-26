@@ -63,3 +63,32 @@ class DirectFingerprintMetadataTestCase:
     description: str
     model_name: str
     expected_storage_key: str
+
+
+@dataclass(frozen=True)
+class DirectSourceRecreationTestCase:
+    description: str
+    declared_settings: tuple[tuple[str, str], ...]
+    catalog_setting_overrides: tuple[tuple[str, str], ...]
+    omitted_catalog_settings: tuple[str, ...]
+    expected_drifted_settings: tuple[str, ...]
+    expected_source_step_ids: tuple[str, ...]
+    expected_recovery_step_ids: tuple[str, ...]
+    expected_recreate_sql_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectSourcePreservationTestCase:
+    description: str
+    declared_settings: tuple[tuple[str, str], ...]
+    catalog_setting_overrides: tuple[tuple[str, str], ...]
+    expected_preserved_relation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectSourceDriftBlockTestCase:
+    description: str
+    catalog_setting_overrides: tuple[tuple[str, str], ...]
+    extra_landing_columns: tuple[tuple[str, str], ...]
+    expected_error_fragments: tuple[str, ...]
+    unexpected_error_fragments: tuple[str, ...]

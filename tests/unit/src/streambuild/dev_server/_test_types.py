@@ -2,7 +2,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from streambuild.cli.build.models import MixedWorkflowPreparation, VirtualWorkflowPreparation
+from streambuild.cli.build.models import (
+    DirectWorkflowPreparation,
+    MixedWorkflowPreparation,
+    VirtualWorkflowPreparation,
+)
 from streambuild.compiler.compile.models import CompiledModel
 from streambuild.dev_server.types import RunPresentationStatus
 
@@ -343,6 +347,14 @@ class ModeAwarePlanTestCase:
     mode: str
     expected_execution_order: tuple[str, ...]
     preparation_builder: Callable[[str], VirtualWorkflowPreparation | MixedWorkflowPreparation]
+
+
+@dataclass(frozen=True)
+class PlanSourceRecreationTestCase:
+    description: str
+    preparation_builder: Callable[[], DirectWorkflowPreparation]
+    expected_warning_code: str
+    expected_message_fragments: tuple[str, ...]
 
 
 @dataclass(frozen=True)

@@ -230,6 +230,18 @@ def prepare_direct_build_workflow(
         snapshot=preview.warehouse_snapshot,
         plan_json=render_direct_plan_json(plan=preview.plan, adapter_name=preview.adapter_name),
     )
+    if workflow.recreated_sources:
+        workflow = replace(
+            workflow,
+            template=replace(
+                workflow.template,
+                plan_json=render_direct_plan_json(
+                    plan=preview.plan,
+                    adapter_name=preview.adapter_name,
+                    source_recreations=workflow.recreated_sources,
+                ),
+            ),
+        )
     return DirectWorkflowPreparation(
         preview=preview,
         request=request,
@@ -238,6 +250,7 @@ def prepare_direct_build_workflow(
             plan=preview.plan,
             adapter_name=preview.adapter_name,
             verbose=options.verbose,
+            source_recreations=workflow.recreated_sources,
         ),
         protection_requirements=build_protection_requirements(
             compiled_project=analysis.compiled_project,

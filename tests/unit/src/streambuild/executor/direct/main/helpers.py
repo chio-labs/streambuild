@@ -1,14 +1,25 @@
 from pathlib import Path
+from typing import cast
 
 from streambuild.adapter.exceptions import AdapterAuthenticationError, AdapterWarehouseError
 from streambuild.adapter.models import (
     AdapterDirectFingerprintRecord,
+    AdapterManagedSource,
+    AdapterMaterializedView,
     AdapterMutationResult,
     AdapterQueryResult,
+    AdapterTable,
+    CatalogColumn,
+    CatalogRelation,
+    CatalogSnapshot,
 )
 from streambuild.adapters.clickhouse._helpers.metadata import (
     render_clickhouse_metadata_migration_workflow,
 )
+from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
+    database_scoped_consumer_group,
+)
+from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
 from streambuild.compiler.planner.types import DirectSelectionMode
@@ -240,4 +251,95 @@ def _capture_result(
 def _direct_prerequisite_snapshot() -> DirectWarehouseSnapshot:
     return build_direct_snapshot(
         relation_names=("tbl__alpha", "mv__alpha"),
+    )
+
+
+def build_managed_source_execution_request(
+    *, project_root: Path, declared_settings: tuple[tuple[str, str], ...]
+) -> DirectBuildRequest:
+    write_direct_scope_project(project_root=project_root)
+    source_path: Path = project_root / "sources" / "orders.yml"
+    settings_yml: str = "".join(
+        f"      {setting_name}: '{setting_value}'\n"
+        for setting_name, setting_value in declared_settings
+    )
+    source_path.write_text(
+        source_path.read_text(encoding="utf-8")
+        + {True: f"    settings:\n{settings_yml}", False: ""}[bool(declared_settings)],
+        encoding="utf-8",
+    )
+    return _analyze_direct_execution_request(
+        project_root=project_root,
+        selected_model_names=("alpha",),
+    )
+
+
+def build_managed_source_snapshot(
+    *,
+    request: DirectBuildRequest,
+    catalog_setting_overrides: tuple[tuple[str, str], ...],
+    omitted_catalog_settings: tuple[str, ...] = (),
+    extra_landing_columns: tuple[tuple[str, str], ...] = (),
+) -> DirectWarehouseSnapshot:
+    """Observe the request's own managed source as deployed, then apply out-of-band drift."""
+
+    kafka: AdapterManagedSource
+    landing: AdapterTable
+    landing_view: AdapterMaterializedView
+    kafka, landing, landing_view = cast(
+        tuple[AdapterManagedSource, AdapterTable, AdapterMaterializedView],
+        request.realized_project.resources_by_logical_key[LogicalResourceKey("source", "orders")],
+    )
+    deployed_settings: dict[str, str] = {
+        "kafka_broker_list": kafka.broker_list,
+        "kafka_topic_list": kafka.topic,
+        "kafka_group_name": database_scoped_consumer_group(
+            consumer_group=kafka.consumer_group, database=request.database
+        ),
+        "kafka_format": kafka.format,
+        **dict(kafka.settings),
+        **dict(catalog_setting_overrides),
+    }
+    setting_name: str
+    for setting_name in omitted_catalog_settings:
+        del deployed_settings[setting_name]
+    landing_columns: tuple[CatalogColumn, ...] = tuple(
+        CatalogColumn(name=column.name, type=column.type) for column in landing.columns
+    )
+    extra_columns: tuple[CatalogColumn, ...] = tuple(
+        CatalogColumn(name=column_name, type=column_type)
+        for column_name, column_type in extra_landing_columns
+    )
+    base: DirectWarehouseSnapshot = _direct_prerequisite_snapshot()
+    return DirectWarehouseSnapshot(
+        catalog=CatalogSnapshot(
+            identity=base.catalog.identity,
+            warehouse_timezone=base.catalog.warehouse_timezone,
+            relations=(
+                *base.catalog.relations,
+                CatalogRelation(
+                    name=kafka.name,
+                    engine="Kafka",
+                    columns=tuple(
+                        CatalogColumn(name=column.name, type=column.type)
+                        for column in kafka.columns
+                    ),
+                    settings=tuple(
+                        (name, f"'{value}'") for name, value in deployed_settings.items()
+                    ),
+                ),
+                CatalogRelation(
+                    name=landing.name,
+                    engine="MergeTree",
+                    columns=(*landing_columns, *extra_columns),
+                ),
+                CatalogRelation(
+                    name=landing_view.name,
+                    engine="MaterializedView",
+                    columns=(),
+                    source_relation_names=(kafka.name,),
+                    target_relation_name=landing_view.target_relation_name,
+                ),
+            ),
+        ),
     )

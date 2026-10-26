@@ -11,6 +11,9 @@ from streambuild.cli.build.models import (
     MixedWorkflowPreparation,
     VirtualWorkflowPreparation,
 )
+from streambuild.cli.plan.main.render_source_recreation_notice import (
+    render_source_recreation_notice,
+)
 from streambuild.compiler.compile.models import CompiledPipeline, LogicalResourceKey, ObjectKey
 from streambuild.compiler.discovery.models import PipelineProtection
 from streambuild.compiler.discovery.types import ReplayLineageMode
@@ -28,6 +31,7 @@ from streambuild.compiler.planner.models import (
 )
 from streambuild.dev_server.exceptions import DevServerError
 
+_SOURCE_RECREATION_WARNING_CODE: str = "managed_source_recreated"
 _TIMESTAMP_DRIVEN_MODES: frozenset[ReplayLineageMode] = frozenset(
     {ReplayLineageMode.TIMESTAMP, ReplayLineageMode.CURSOR}
 )
@@ -158,6 +162,19 @@ def build_mode_aware_plan_payload(
             },
         }
     )
+    if direct is not None and direct.workflow.recreated_sources:
+        direct_warnings: object = payload["warnings"]
+        payload["warnings"] = [
+            *(direct_warnings if isinstance(direct_warnings, list) else []),
+            *[
+                {
+                    "code": _SOURCE_RECREATION_WARNING_CODE,
+                    "message": render_source_recreation_notice(recreation),
+                    "relatedModel": None,
+                }
+                for recreation in direct.workflow.recreated_sources
+            ],
+        ]
     if virtual is not None:
         existing_warnings: object = payload["warnings"]
         model_name_by_object: dict[ObjectKey, str] = {

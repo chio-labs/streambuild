@@ -32,6 +32,7 @@ from streambuild.executor.workflow.models import (
 from streambuild.executor.workflow.types import WorkflowEventEmitter
 
 _EMPTY_TEXT: str = ""
+_PAUSED_SOURCE_STEP_PREFIXES: tuple[str, ...] = ("pause_source_", "drop_source_")
 
 
 def execute_direct_build_workflow(
@@ -135,8 +136,8 @@ def _recover_managed_sources(
     failed_step_id: str,
     start_sequence: int,
 ) -> tuple[WarehouseStatement, ...]:
-    source_was_paused: bool = failed_step_id.startswith("pause_source_") or any(
-        step_id.startswith("pause_source_") for step_id in completed_step_ids
+    source_was_paused: bool = failed_step_id.startswith(_PAUSED_SOURCE_STEP_PREFIXES) or any(
+        step_id.startswith(_PAUSED_SOURCE_STEP_PREFIXES) for step_id in completed_step_ids
     )
     if not source_was_paused:
         return ()

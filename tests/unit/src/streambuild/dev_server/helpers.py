@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -93,6 +94,13 @@ from streambuild.dev_server.models import (
 )
 from streambuild.executor.destruction.models import DestructionPlan
 from streambuild.executor.destruction.types import DestructionOperation
+from streambuild.executor.direct.models import DirectBuildWorkflow
+from streambuild.executor.population.models import (
+    PopulationManagedSource,
+    PopulationSourceRecreation,
+)
+from streambuild.executor.workflow.models import BuildWorkflow
+from streambuild.executor.workflow.types import WorkflowMode
 from tests.unit.src.streambuild.auth.helpers import build_control_store
 from tests.unit.src.streambuild.compiler.discovery._helpers.load.helpers import (
     write_pipeline_file,
@@ -818,6 +826,38 @@ def build_direct_plan_preparation() -> DirectWorkflowPreparation:
         request=MagicMock(),
         workflow=MagicMock(),
         plan_text="direct",
+    )
+
+
+def build_direct_source_recreation_plan_preparation() -> DirectWorkflowPreparation:
+    preparation: DirectWorkflowPreparation = build_direct_plan_preparation()
+    return replace(
+        preparation,
+        workflow=DirectBuildWorkflow(
+            template=BuildWorkflow(mode=WorkflowMode.DIRECT, plan_json="{}", statements=()),
+            runtime_replays=(),
+            workflow_id="workflow-1",
+            recreated_sources=(
+                PopulationSourceRecreation(
+                    managed_source=PopulationManagedSource(
+                        resource=AdapterManagedSource(
+                            source_kind="kafka",
+                            name="kafka__orders",
+                            columns=(),
+                            broker_list="kafka:9092",
+                            topic="source.orders",
+                            consumer_group="streambuild_orders",
+                            format="JSONAsString",
+                        ),
+                        database="analytics",
+                    ),
+                    landing_view_name="mv__orders",
+                    landing_relation_name="raw__orders",
+                    consumer_group="streambuild_orders_analytics",
+                    drifted_setting_names=("kafka_topic_list",),
+                ),
+            ),
+        ),
     )
 
 

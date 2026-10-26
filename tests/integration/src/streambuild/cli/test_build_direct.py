@@ -41,6 +41,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectSelectedBuildIntegrationTestCase,
     CliDirectSelectedFailureIntegrationTestCase,
     CliDirectSelectionMatrixIntegrationTestCase,
+    CliDirectSourceRecreationIntegrationTestCase,
     CliDirectStartTimeIntegrationTestCase,
     CliDirectTimezoneStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
@@ -71,6 +72,7 @@ from tests.integration.src.streambuild.cli.helpers import (
     insert_landing_rows_after_delay,
     landing_relation_uuids,
     landing_view_timestamp_projection,
+    managed_source_relation_state,
     publish_direct_workflow,
     read_workflow_artifact,
     replace_landing_view_with_second_precision,
@@ -954,12 +956,25 @@ def test_given_different_target_states_when_rebuilding_then_inclusive_source_con
     "test_case",
     [
         CliDirectBuildGuardIntegrationTestCase(
-            description="managed Kafka drift blocks the build before any model teardown",
+            description="landing column drift blocks the build before any model teardown",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_topic="source.orders",
+            pre_rebuild_statements=(
+                "ALTER TABLE {database}.raw__orders ADD COLUMN customer_id String",
+            ),
+            expected_exit_code=1,
+            expected_error_fragment="raw__orders landing columns no longer match",
+            expected_order_ids=("order-1", "order-2"),
+        ),
+        CliDirectBuildGuardIntegrationTestCase(
+            description="landing column drift still blocks alongside a changed topic",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
             rebuilt_topic="source.orders.renamed",
-            pre_rebuild_statements=(),
+            pre_rebuild_statements=(
+                "ALTER TABLE {database}.raw__orders ADD COLUMN customer_id String",
+            ),
             expected_exit_code=1,
-            expected_error_fragment="Direct build preserves managed source infrastructure",
+            expected_error_fragment="raw__orders landing columns no longer match",
             expected_order_ids=("order-1", "order-2"),
         ),
     ],
@@ -1007,6 +1022,110 @@ def test_given_unsafe_warehouse_state_when_building_then_it_blocks_before_teardo
     assert exit_code == test_case.expected_exit_code
     assert test_case.expected_error_fragment in command_error
     assert order_ids == test_case.expected_order_ids
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectSourceRecreationIntegrationTestCase(
+            description="declared consumer setting recreates the source and keeps landing",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_topic="source.orders",
+            rebuilt_settings=(("kafka_max_block_size", "500"),),
+            expected_drifted_settings=("kafka_max_block_size",),
+            expected_kafka_ddl_fragments=(
+                "kafka_topic_list = 'source.orders'",
+                "kafka_max_block_size = '500'",
+            ),
+            expected_order_ids=("order-1", "order-2"),
+        ),
+        CliDirectSourceRecreationIntegrationTestCase(
+            description="changed topic recreates the source and keeps landing",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_topic="source.orders.renamed",
+            rebuilt_settings=(),
+            expected_drifted_settings=("kafka_topic_list",),
+            expected_kafka_ddl_fragments=("kafka_topic_list = 'source.orders.renamed'",),
+            expected_order_ids=("order-1", "order-2"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_and_landing_kept(
+    test_case: CliDirectSourceRecreationIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        first_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        state_before: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        write_direct_build_project(
+            project_root=tmp_path,
+            topic=test_case.rebuilt_topic,
+            source_settings=test_case.rebuilt_settings,
+        )
+        plan_exit_code: int = run_direct_plan(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        plan_payload: dict[str, object] = json.loads(capsys.readouterr().out)
+        rebuild_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        rebuild_error: str = capsys.readouterr().err
+        state_after: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        landing_row_count: int = warehouse_row_count(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            statement=f"SELECT count() FROM {{database}}.{DIRECT_BUILD_LANDING_TABLE_NAME}",
+        )
+        order_ids: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        connection.close()
+
+    recreations: list[dict[str, object]] = cast(
+        list[dict[str, object]], plan_payload["source_recreations"]
+    )
+    kafka_ddl_before: str = state_before["kafka__orders"][1]
+    kafka_ddl_after: str = state_after["kafka__orders"][1]
+    group_setting: str = (
+        f"kafka_group_name = 'streambuild_direct_build_test_orders_{clickhouse_database}'"
+    )
+    assert (first_exit_code, plan_exit_code, rebuild_exit_code) == (0, 0, 0)
+    assert [recreation["drifted_settings"] for recreation in recreations] == [
+        list(test_case.expected_drifted_settings)
+    ]
+    assert state_after["kafka__orders"][0] != state_before["kafka__orders"][0]
+    assert all(fragment in kafka_ddl_after for fragment in test_case.expected_kafka_ddl_fragments)
+    assert group_setting in kafka_ddl_before
+    assert group_setting in kafka_ddl_after
+    assert f"TO {clickhouse_database}.raw__orders" in state_after["mv__orders"][1]
+    assert state_after["raw__orders"][0] == state_before["raw__orders"][0]
+    assert landing_row_count == len(test_case.landing_rows)
+    assert order_ids == test_case.expected_order_ids
+    assert "committed offsets" not in rebuild_error
 
 
 @pytest.mark.integration

@@ -17,11 +17,17 @@ from streambuild.compiler.planner.models import (
     PlannerWarning,
 )
 from streambuild.compiler.planner.types import DirectSqlBaselineStatus
+from streambuild.executor.population.models import PopulationSourceRecreation
 
 _DEFAULT_DIFF_LINE_LIMIT: int = 12
 
 
-def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
+def render_direct_plan_json(
+    *,
+    plan: DirectPlan,
+    adapter_name: str,
+    source_recreations: tuple[PopulationSourceRecreation, ...] = (),
+) -> str:
     """Render one direct plan as deterministic JSON."""
 
     payload: dict[str, object] = {
@@ -42,12 +48,21 @@ def render_direct_plan_json(*, plan: DirectPlan, adapter_name: str) -> str:
         "replay_roots": [_replay_root_payload(root) for root in plan.replay_roots],
         "teardown": [_operation_payload(operation) for operation in plan.teardown_operations],
         "creation": [_operation_payload(operation) for operation in plan.creation_operations],
+        "source_recreations": [
+            _source_recreation_payload(recreation) for recreation in source_recreations
+        ],
         "warnings": [_warning_payload(warning) for warning in plan.warnings],
     }
     return json.dumps(payload, indent=2) + "\n"
 
 
-def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: bool = False) -> str:
+def render_direct_plan_text(
+    *,
+    plan: DirectPlan,
+    adapter_name: str,
+    verbose: bool = False,
+    source_recreations: tuple[PopulationSourceRecreation, ...] = (),
+) -> str:
     """Render one direct plan as operator-facing text."""
 
     lines: list[str] = [cli_style().title(f"Direct plan  {plan.database}"), ""]
@@ -59,6 +74,11 @@ def render_direct_plan_text(*, plan: DirectPlan, adapter_name: str, verbose: boo
     entry: DirectPlanEntry
     for entry in plan.entries:
         lines.extend(_render_model_decision(entry=entry, verbose=verbose))
+    recreation: PopulationSourceRecreation
+    for recreation in source_recreations:
+        lines.append(
+            f"{cli_style().label('source')}  {render_source_recreation_notice(recreation)}"
+        )
     if plan.effective_start_time is not None:
         lines.append(cli_style().label_value(label="Start time", value=plan.effective_start_time))
     warning: PlannerWarning
@@ -135,6 +155,30 @@ def _render_sql_change(*, sql_change: DirectSqlChange, verbose: bool) -> tuple[s
         if not verbose and len(diff_lines) > len(visible_lines):
             lines.append(cli_style().muted("    ... use --verbose for the complete diff"))
     return tuple(lines)
+
+
+def render_source_recreation_notice(recreation: PopulationSourceRecreation) -> str:
+    """Describe one drifted managed source recreation in a single operator-facing line."""
+
+    return (
+        f"{recreation.managed_source.resource.name} and {recreation.landing_view_name} are "
+        "recreated with the declared settings "
+        f"({', '.join(recreation.drifted_setting_names)}); {recreation.landing_relation_name} "
+        "and its rows are kept. Consumption resumes from the committed offsets of consumer "
+        f"group '{recreation.consumer_group}', or follows the Kafka engine's offset reset "
+        "policy on a topic where the group has none."
+    )
+
+
+def _source_recreation_payload(recreation: PopulationSourceRecreation) -> dict[str, object]:
+    return {
+        "relation_name": recreation.managed_source.resource.name,
+        "landing_view_name": recreation.landing_view_name,
+        "landing_relation_name": recreation.landing_relation_name,
+        "consumer_group": recreation.consumer_group,
+        "drifted_settings": list(recreation.drifted_setting_names),
+        "message": render_source_recreation_notice(recreation),
+    }
 
 
 def _summary_line(*, plan: DirectPlan) -> str:

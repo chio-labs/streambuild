@@ -1,4 +1,4 @@
-"""Preserve managed source and landing resources and block on drift."""
+"""Preserve managed landing resources, recreate drifted Kafka sources, block on other drift."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ from streambuild.adapter.models import (
     AdapterTable,
     CatalogRelation,
     CatalogSnapshot,
+)
+from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
+    database_scoped_consumer_group,
 )
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
@@ -22,11 +25,14 @@ from streambuild.executor.population.models import (
     PopulationManagedSource,
     PopulationRealization,
     PopulationSourcePreparation,
+    PopulationSourceRecreation,
 )
 
 _KAFKA_BROKER_LIST_SETTING: str = "kafka_broker_list"
 _KAFKA_TOPIC_LIST_SETTING: str = "kafka_topic_list"
 _KAFKA_FORMAT_SETTING: str = "kafka_format"
+_KAFKA_GROUP_NAME_SETTING: str = "kafka_group_name"
+_MASKED_SETTING_VALUE: str = "[HIDDEN]"
 
 
 def plan_preserved_managed_sources(
@@ -36,7 +42,7 @@ def plan_preserved_managed_sources(
     catalog: CatalogSnapshot,
     database: str,
 ) -> tuple[PopulationSourcePreparation, tuple[PopulationRealization, ...]]:
-    """Validate preserved sources and plan absent resources without mutation."""
+    """Validate preserved sources and plan absent or recreated resources without mutation."""
 
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
         _managed_source_resources(
@@ -47,13 +53,22 @@ def plan_preserved_managed_sources(
             ),
         )
     )
-    _reject_managed_source_drift(resources=resources, catalog=catalog)
+    recreated_sources: tuple[PopulationSourceRecreation, ...] = _plan_source_recreations(
+        resources=resources,
+        catalog=catalog,
+        database=database,
+    )
+    recreated_names: frozenset[str] = frozenset(
+        recreation.managed_source.resource.name for recreation in recreated_sources
+    )
     preserved_names: list[str] = []
     created_names: list[str] = []
     landing_view_names: list[str] = []
     realizations: list[PopulationRealization] = []
     resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
     for resource in resources:
+        if resource.name in recreated_names:
+            continue
         if resource.name in catalog.relation_names():
             preserved_names.append(resource.name)
         else:
@@ -78,6 +93,7 @@ def plan_preserved_managed_sources(
             created_relation_names=tuple(created_names),
             landing_views=desired_landing_views,
             managed_sources=managed_sources,
+            recreated_sources=recreated_sources,
         ),
         tuple(realizations),
     )
@@ -116,43 +132,61 @@ def _managed_source_resources(
     return tuple(resources)
 
 
-def _reject_managed_source_drift(
+def _plan_source_recreations(
     *,
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...],
     catalog: CatalogSnapshot,
-) -> None:
-    drift: list[str] = []
+    database: str,
+) -> tuple[PopulationSourceRecreation, ...]:
+    blocking_drift: list[str] = []
+    recreations: list[PopulationSourceRecreation] = []
     resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
     for resource in resources:
         relation: CatalogRelation | None = catalog.relation(resource.name)
-        drift.extend(_resource_drift(resource=resource, relation=relation))
-    if drift:
+        if relation is None:
+            continue
+        if isinstance(resource, AdapterManagedSource):
+            drifted_setting_names: tuple[str, ...] = _managed_source_drift(
+                resource=resource, relation=relation
+            )
+            if not drifted_setting_names:
+                continue
+            consumer_group: str = database_scoped_consumer_group(
+                consumer_group=resource.consumer_group,
+                database=database,
+            )
+            blocking_drift.extend(
+                _consumer_group_drift(relation=relation, consumer_group=consumer_group)
+            )
+            landing_view: AdapterMaterializedView = _landing_view(
+                managed_source=resource, resources=resources
+            )
+            recreations.append(
+                PopulationSourceRecreation(
+                    managed_source=PopulationManagedSource(resource=resource, database=database),
+                    landing_view_name=landing_view.name,
+                    landing_relation_name=landing_view.target_relation_name,
+                    consumer_group=consumer_group,
+                    drifted_setting_names=drifted_setting_names,
+                )
+            )
+        elif isinstance(resource, AdapterTable):
+            blocking_drift.extend(_landing_table_drift(resource=resource, relation=relation))
+        else:
+            blocking_drift.extend(_landing_view_drift(resource=resource, relation=relation))
+    if blocking_drift:
         raise DirectBuildError(
             "Direct build preserves managed source infrastructure and cannot continue while it "
-            f"has drifted: {'; '.join(drift)}. Recreate the source explicitly before rebuilding."
+            f"has drifted: {'; '.join(blocking_drift)}. Recreate the source explicitly before "
+            "rebuilding."
         )
-
-
-def _resource_drift(
-    *,
-    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView,
-    relation: CatalogRelation | None,
-) -> tuple[str, ...]:
-    if relation is None:
-        return ()
-    if isinstance(resource, AdapterManagedSource):
-        return _managed_source_drift(resource=resource, relation=relation)
-    if isinstance(resource, AdapterTable):
-        return _landing_table_drift(resource=resource, relation=relation)
-    return _landing_view_drift(resource=resource, relation=relation)
+    return tuple(recreations)
 
 
 def _managed_source_drift(
     *, resource: AdapterManagedSource, relation: CatalogRelation
 ) -> tuple[str, ...]:
-    actual_settings: dict[str, str] = {
-        setting_name: _unquoted(setting_value) for setting_name, setting_value in relation.settings
-    }
+    actual_settings: dict[str, str] = _actual_settings(relation=relation)
     expected_settings: dict[str, str] = {
         _KAFKA_BROKER_LIST_SETTING: resource.broker_list,
         _KAFKA_TOPIC_LIST_SETTING: resource.topic,
@@ -160,11 +194,42 @@ def _managed_source_drift(
         **dict(resource.settings),
     }
     return tuple(
-        f"{relation.name} setting '{setting_name}' is "
-        f"'{actual_settings.get(setting_name)}' but the project declares '{expected_value}'"
+        setting_name
         for setting_name, expected_value in expected_settings.items()
-        if actual_settings.get(setting_name) != expected_value
+        if actual_settings.get(setting_name) not in {expected_value, _MASKED_SETTING_VALUE}
     )
+
+
+def _consumer_group_drift(*, relation: CatalogRelation, consumer_group: str) -> tuple[str, ...]:
+    actual_group: str | None = _actual_settings(relation=relation).get(_KAFKA_GROUP_NAME_SETTING)
+    if actual_group == consumer_group:
+        return ()
+    return (
+        f"{relation.name} consumes as consumer group '{actual_group}' but the project declares "
+        f"'{consumer_group}', so recreating it for its changed settings would not resume from "
+        "the committed offsets",
+    )
+
+
+def _landing_view(
+    *,
+    managed_source: AdapterManagedSource,
+    resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...],
+) -> AdapterMaterializedView:
+    resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
+    for resource in resources:
+        if (
+            isinstance(resource, AdapterMaterializedView)
+            and resource.source_relation_name == managed_source.name
+        ):
+            return resource
+    raise DirectBuildError(f"Managed source '{managed_source.name}' has no landing view")
+
+
+def _actual_settings(*, relation: CatalogRelation) -> dict[str, str]:
+    return {
+        setting_name: _unquoted(setting_value) for setting_name, setting_value in relation.settings
+    }
 
 
 def _landing_table_drift(*, resource: AdapterTable, relation: CatalogRelation) -> tuple[str, ...]:
