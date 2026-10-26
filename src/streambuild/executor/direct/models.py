@@ -10,6 +10,7 @@ from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan
 from streambuild.executor.auditing.models import SqlAuditRunResult
+from streambuild.executor.population.models import PopulationSourceRecreation
 from streambuild.executor.workflow.models import (
     BuildWorkflow,
     WarehouseStatement,
@@ -99,6 +100,7 @@ class DirectBuildWorkflow:
     runtime_replays: tuple[DirectRuntimeReplay, ...]
     workflow_id: str
     source_recovery_statements: tuple[WarehouseStatement, ...] = ()
+    recreated_sources: tuple[PopulationSourceRecreation, ...] = ()
 
     @property
     def mode(self) -> WorkflowMode:

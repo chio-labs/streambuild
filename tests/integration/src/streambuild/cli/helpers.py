@@ -1186,6 +1186,7 @@ def write_direct_build_project(
     virtual_environments: bool = False,
     relation_name: str = DIRECT_BUILD_TARGET_TABLE_NAME,
     replay_boundary_mode: str = "offsets",
+    source_settings: tuple[tuple[str, str], ...] = (),
 ) -> None:
     """Write a managed Kafka direct-mode project with one replayable model."""
 
@@ -1206,7 +1207,8 @@ def write_direct_build_project(
             broker_list=broker_list,
             topic=topic,
             replay_boundary_mode=replay_boundary_mode,
-        ),
+        )
+        + _direct_build_source_settings_yml(source_settings=source_settings),
         encoding="utf-8",
     )
     (pipeline_root / f"{DIRECT_BUILD_MODEL_NAME}.sql").write_text(
@@ -1218,6 +1220,14 @@ def write_direct_build_project(
     audit_sql: str
     for audit_name, audit_sql in audit_sql_by_name:
         (audit_root / audit_name).write_text(audit_sql, encoding="utf-8")
+
+
+def _direct_build_source_settings_yml(*, source_settings: tuple[tuple[str, str], ...]) -> str:
+    settings_lines: str = "".join(
+        f"      {setting_name}: '{setting_value}'\n"
+        for setting_name, setting_value in source_settings
+    )
+    return {True: f"    settings:\n{settings_lines}", False: ""}[bool(source_settings)]
 
 
 def write_direct_postgres_refresh_project(
@@ -1552,6 +1562,7 @@ def insert_landing_rows(
 
 DIRECT_BUILD_KAFKA_TABLE_NAME: str = "kafka__orders"
 DIRECT_BUILD_LANDING_VIEW_NAME: str = "mv__orders"
+DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME: str = "_streambuild_next__kafka__orders"
 _SECOND_PRECISION_LANDING_VIEW_SQL: str = (
     "CREATE MATERIALIZED VIEW {database}.{view_name} TO {database}.{landing_table_name} AS\n"
     "SELECT\n"
@@ -2003,6 +2014,27 @@ def deployment_watermark_count(
             ).rows[0][0]
         )
     )
+
+
+def managed_source_relation_state(
+    *, clickhouse_client: Client, database: str
+) -> dict[str, tuple[str, str]]:
+    """Return each managed source relation's UUID and DDL, including any staged source."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, toString(uuid), create_table_query FROM system.tables "
+        "WHERE database = {database:String} AND name IN ({names:Array(String)})",
+        parameters={
+            "database": database,
+            "names": [
+                DIRECT_BUILD_KAFKA_TABLE_NAME,
+                DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME,
+                DIRECT_BUILD_LANDING_TABLE_NAME,
+                DIRECT_BUILD_LANDING_VIEW_NAME,
+            ],
+        },
+    ).result_rows
+    return {str(row[0]): (str(row[1]), str(row[2])) for row in rows}
 
 
 def direct_build_order_ids(*, clickhouse_client: Client, database: str) -> tuple[str, ...]:

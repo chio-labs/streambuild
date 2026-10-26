@@ -85,10 +85,22 @@ class PopulationRealization:
 
 
 @dataclass(frozen=True)
+class PopulationSourceRecreation:
+    """One managed source whose drifted settings are reset while its landing table is kept."""
+
+    managed_source: PopulationManagedSource
+    landing_view_name: str
+    landing_relation_name: str
+    consumer_group: str
+    drifted_setting_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PopulationSourcePreparation:
-    """Managed source resources preserved, created, and awaiting activation."""
+    """Managed source resources preserved, created, recreated, and awaiting activation."""
 
     preserved_relation_names: tuple[str, ...]
     created_relation_names: tuple[str, ...]
     landing_views: tuple[DesiredMaterializedView, ...]
     managed_sources: tuple[PopulationManagedSource, ...]
+    recreated_sources: tuple[PopulationSourceRecreation, ...] = ()

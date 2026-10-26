@@ -51,12 +51,16 @@ from streambuild.executor.population.main._build_population_replay_templates imp
 from streambuild.executor.population.main._expand_population_plan import expand_population_plan
 from streambuild.executor.population.main._plan_population_objects import plan_population_objects
 from streambuild.executor.population.models import (
+    PopulationManagedSource,
     PopulationPlan,
     PopulationRealization,
     PopulationSourcePreparation,
+    PopulationSourceRecreation,
 )
 from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
 from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
+
+_STAGED_SOURCE_NAME_PREFIX: str = "_streambuild_next__"
 
 
 def assemble_direct_build_workflow(
@@ -135,6 +139,19 @@ def assemble_direct_build_workflow(
     source_recovery_statements: tuple[WarehouseStatement, ...] = _source_recovery_statements(
         statements=statements,
         landing_view_names=tuple(landing_view.name for landing_view in paused_landing_views),
+        staged_source_drop_sql=tuple(
+            (
+                recreation.managed_source.resource.name,
+                _drop_staged_source_sql(recreation=recreation),
+            )
+            for recreation in source_preparation.recreated_sources
+        ),
+    )
+    step_ids: frozenset[str] = frozenset(statement.step_id for statement in statements)
+    recreated_sources: tuple[PopulationSourceRecreation, ...] = tuple(
+        recreation
+        for recreation in source_preparation.recreated_sources
+        if f"swap_source_{_step_segment(recreation.managed_source.resource.name)}" in step_ids
     )
     return DirectBuildWorkflow(
         template=BuildWorkflow(
@@ -145,6 +162,7 @@ def assemble_direct_build_workflow(
         runtime_replays=runtime_replays,
         workflow_id=request.workflow_id,
         source_recovery_statements=source_recovery_statements,
+        recreated_sources=recreated_sources,
     )
 
 
@@ -256,6 +274,22 @@ def _preparation_statements(
         phase=WorkflowPhase.PREPARATION,
         start_sequence=start_sequence,
     )
+    early_paused_landing_view_names: tuple[str, ...] = tuple(
+        recreation.landing_view_name
+        for recreation in source_preparation.recreated_sources
+        if recreation.landing_view_name in preserved_landing_view_names
+    )
+    recreated: tuple[WarehouseStatement, ...] = _mutation_statements(
+        rendered=_source_recreation_rendered(
+            request=request,
+            client=client,
+            source_preparation=source_preparation,
+            early_paused_landing_view_names=early_paused_landing_view_names,
+        ),
+        phase=WorkflowPhase.PREPARATION,
+        start_sequence=start_sequence + len(passive),
+    )
+    bootstrap_start: int = start_sequence + len(passive) + len(recreated)
     bootstrap: tuple[WarehouseStatement, ...] = _mutation_statements(
         rendered=tuple(
             (
@@ -269,34 +303,99 @@ def _preparation_statements(
             for landing_view in source_preparation.landing_views
         ),
         phase=WorkflowPhase.PREPARATION,
-        start_sequence=start_sequence + len(passive),
+        start_sequence=bootstrap_start,
     )
     bootstrap_wait: tuple[WarehouseStatement, ...] = (
         _wait_statements(
             seconds=request.stabilization_seconds,
             step_id="wait_for_source_bootstrap",
             phase=WorkflowPhase.PREPARATION,
-            start_sequence=start_sequence + len(passive) + len(bootstrap),
+            start_sequence=bootstrap_start + len(bootstrap),
         )
         if bootstrap and request.stabilization_seconds > 0
         else ()
     )
-    paused_landing_view_names: tuple[str, ...] = (
-        *preserved_landing_view_names,
-        *(landing_view.name for landing_view in source_preparation.landing_views),
+    bootstrapped_landing_view_names: tuple[str, ...] = tuple(
+        landing_view.name for landing_view in source_preparation.landing_views
+    )
+    paused_landing_view_names: tuple[str, ...] = tuple(
+        landing_view_name
+        for landing_view_name in (*preserved_landing_view_names, *bootstrapped_landing_view_names)
+        if landing_view_name not in early_paused_landing_view_names
     )
     pause: tuple[WarehouseStatement, ...] = _mutation_statements(
         rendered=tuple(
-            (
-                f"pause_source_{_step_segment(landing_view_name)}",
-                f"DROP TABLE IF EXISTS {request.database}.{landing_view_name} SYNC",
-            )
+            _pause_rendered(request=request, landing_view_name=landing_view_name)
             for landing_view_name in paused_landing_view_names
         ),
         phase=WorkflowPhase.PREPARATION,
-        start_sequence=start_sequence + len(passive) + len(bootstrap) + len(bootstrap_wait),
+        start_sequence=bootstrap_start + len(bootstrap) + len(bootstrap_wait),
     )
-    return (*passive, *bootstrap, *bootstrap_wait, *pause)
+    return (*passive, *recreated, *bootstrap, *bootstrap_wait, *pause)
+
+
+def _pause_rendered(*, request: DirectBuildRequest, landing_view_name: str) -> tuple[str, str]:
+    return (
+        f"pause_source_{_step_segment(landing_view_name)}",
+        f"DROP TABLE IF EXISTS {request.database}.{landing_view_name} SYNC",
+    )
+
+
+def _source_recreation_rendered(
+    *,
+    request: DirectBuildRequest,
+    client: AdapterConnection,
+    source_preparation: PopulationSourcePreparation,
+    early_paused_landing_view_names: tuple[str, ...],
+) -> tuple[tuple[str, str], ...]:
+    """Detach landing, then swap in a pre-validated declared Kafka source; landing is kept."""
+
+    rendered: list[tuple[str, str]] = []
+    recreation: PopulationSourceRecreation
+    for recreation in source_preparation.recreated_sources:
+        if recreation.landing_view_name in early_paused_landing_view_names:
+            rendered.append(
+                _pause_rendered(request=request, landing_view_name=recreation.landing_view_name)
+            )
+        source: PopulationManagedSource = recreation.managed_source
+        segment: str = _step_segment(source.resource.name)
+        staged_name: str = _staged_source_name(recreation=recreation)
+        rendered.extend(
+            (
+                (
+                    f"clear_staged_source_{segment}",
+                    _drop_staged_source_sql(recreation=recreation),
+                ),
+                (
+                    f"stage_source_{segment}",
+                    client.render_resource(
+                        resource=replace(source.resource, name=staged_name),
+                        database=source.database,
+                    ),
+                ),
+                (
+                    f"swap_source_{segment}",
+                    f"EXCHANGE TABLES {source.database}.{source.resource.name} AND "
+                    f"{source.database}.{staged_name}",
+                ),
+                (
+                    f"retire_source_{segment}",
+                    _drop_staged_source_sql(recreation=recreation),
+                ),
+            )
+        )
+    return tuple(rendered)
+
+
+def _staged_source_name(*, recreation: PopulationSourceRecreation) -> str:
+    return f"{_STAGED_SOURCE_NAME_PREFIX}{recreation.managed_source.resource.name}"
+
+
+def _drop_staged_source_sql(*, recreation: PopulationSourceRecreation) -> str:
+    return _terminate_sql(
+        f"DROP TABLE IF EXISTS {recreation.managed_source.database}."
+        f"{_staged_source_name(recreation=recreation)} SYNC"
+    )
 
 
 def _teardown_statements(
@@ -394,18 +493,36 @@ def _source_recovery_statements(
     *,
     statements: tuple[WarehouseStatement, ...],
     landing_view_names: tuple[str, ...],
+    staged_source_drop_sql: tuple[tuple[str, str], ...],
 ) -> tuple[WarehouseStatement, ...]:
+    if not statements:
+        return ()
     activation_by_step_id: dict[str, WarehouseStatement] = {
         statement.step_id: statement for statement in statements
     }
-    return tuple(
-        replace(
-            activation_by_step_id[f"activate_source_{_step_segment(landing_view_name)}"],
+    staged_recovery: tuple[WarehouseStatement, ...] = tuple(
+        WarehouseStatement(
             sequence=index,
-            step_id=f"recover_source_{_step_segment(landing_view_name)}",
+            step_id=f"recover_staged_source_{_step_segment(source_name)}",
             phase=WorkflowPhase.FINALIZATION,
+            intent=StatementIntent.MUTATION,
+            sql=sql,
         )
-        for index, landing_view_name in enumerate(landing_view_names, start=1)
+        for index, (source_name, sql) in enumerate(staged_source_drop_sql, start=1)
+    )
+    return (
+        *staged_recovery,
+        *(
+            replace(
+                activation_by_step_id[f"activate_source_{_step_segment(landing_view_name)}"],
+                sequence=index,
+                step_id=f"recover_source_{_step_segment(landing_view_name)}",
+                phase=WorkflowPhase.FINALIZATION,
+            )
+            for index, landing_view_name in enumerate(
+                landing_view_names, start=len(staged_recovery) + 1
+            )
+        ),
     )
 
 

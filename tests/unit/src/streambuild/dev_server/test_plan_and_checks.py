@@ -38,6 +38,7 @@ from tests.unit.src.streambuild.dev_server._test_types import (
     DevRefactorTestCase,
     ModeAwarePlanTestCase,
     PlanEndpointTestCase,
+    PlanSourceRecreationTestCase,
     RunEventsFeedTestCase,
 )
 from tests.unit.src.streambuild.dev_server.helpers import (
@@ -45,6 +46,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     FakeEmptyResultConnection,
     build_compile_callable,
     build_direct_plan_preparation,
+    build_direct_source_recreation_plan_preparation,
     build_fake_state_connection,
     build_mixed_plan_preparation,
     build_state_test_client,
@@ -195,6 +197,43 @@ def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution
     assert payload["phases"][0]["actions"][0]["logicalName"] == "orders_summary"
     assert payload["warnings"][0]["relatedModel"] == "orders_summary"
     assert options.deployment_id == deployment_id
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        PlanSourceRecreationTestCase(
+            description="drifted managed source recreation is shown on the plan",
+            preparation_builder=build_direct_source_recreation_plan_preparation,
+            expected_warning_code="managed_source_recreated",
+            expected_message_fragments=(
+                "kafka__orders and mv__orders are recreated with the declared settings "
+                "(kafka_topic_list)",
+                "raw__orders and its rows are kept",
+                "committed offsets of consumer group 'streambuild_orders_analytics'",
+            ),
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_source_recreation_when_planning_then_plan_describes_it(
+    test_case: PlanSourceRecreationTestCase,
+    tmp_path: Path,
+) -> None:
+    write_dev_server_project(project_dir=tmp_path)
+    client: TestClient = build_state_test_client(project_dir=tmp_path)
+
+    with patch(
+        "streambuild.dev_server._helpers.server.api_routes.prepare_build_workflow",
+        return_value=test_case.preparation_builder(),
+    ):
+        response: Response = client.get("/api/plan", params={"select": "orders_clean"})
+
+    warnings: list[dict] = response.json()["warnings"]
+    message: str = warnings[0]["message"]
+    assert response.status_code == 200
+    assert [warning["code"] for warning in warnings] == [test_case.expected_warning_code]
+    assert all(fragment in message for fragment in test_case.expected_message_fragments)
 
 
 @pytest.mark.parametrize(

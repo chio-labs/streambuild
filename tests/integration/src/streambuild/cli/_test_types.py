@@ -242,6 +242,26 @@ class CliDirectBuildGuardIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectSourceRecreationIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_topic: str
+    rebuilt_settings: tuple[tuple[str, str], ...]
+    expected_drifted_settings: tuple[str, ...]
+    expected_kafka_ddl_fragments: tuple[str, ...]
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CliDirectSourceRejectionIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_settings: tuple[tuple[str, str], ...]
+    expected_error_fragment: str
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliCrossModeBuildIntegrationTestCase:
     description: str
     expected_exit_code: int
