@@ -37,9 +37,18 @@ from streambuild.compiler.pipeline.main._realize_project import realize_project
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectWarehouseSnapshot
 from streambuild.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
+from streambuild.executor.direct.models import DirectBuildRequest
 from tests.unit.src.streambuild.cli.helpers import RecordingAdapterConnection
 from tests.unit.src.streambuild.compiler.compile.helpers import build_realization_analyzer
-from tests.unit.src.streambuild.compiler.planner.helpers import build_settled_direct_snapshot
+from tests.unit.src.streambuild.compiler.planner.helpers import (
+    analyze_direct_scope_project,
+    build_direct_fingerprint_snapshot,
+    build_settled_direct_snapshot,
+)
+from tests.unit.src.streambuild.executor.direct.main.helpers import (
+    build_managed_source_execution_request,
+    build_managed_source_snapshot,
+)
 
 SELECTOR_PIPELINES_ROOT: Path = Path("tests/fixtures/selector_project/pipelines")
 _ABSENT_DIRECT_FINGERPRINTS: AdapterDirectFingerprintSnapshot = AdapterDirectFingerprintSnapshot(
@@ -126,15 +135,19 @@ def run_scope_project_plan(
     changed: bool = False,
     include_missing_upstream: bool = False,
     direct_fingerprints: AdapterDirectFingerprintSnapshot = _ABSENT_DIRECT_FINGERPRINTS,
+    warehouse_snapshot: DirectWarehouseSnapshot | None = None,
 ) -> int:
-    """Run `stb plan` against the direct scope project with a settled warehouse."""
+    """Run `stb plan` against the direct scope project with a settled warehouse.
 
-    snapshot: DirectWarehouseSnapshot = build_settled_direct_snapshot()
-    snapshot = replace(
-        snapshot,
+    The settled warehouse omits the managed source unless ``warehouse_snapshot`` replaces it.
+    """
+
+    settled: DirectWarehouseSnapshot = build_settled_direct_snapshot()
+    snapshot: DirectWarehouseSnapshot = warehouse_snapshot or replace(
+        settled,
         catalog=replace(
-            snapshot.catalog,
-            relations=snapshot.catalog.relations[3:],
+            settled.catalog,
+            relations=settled.catalog.relations[3:],
         ),
     )
     return run_plan(
@@ -201,4 +214,29 @@ def fail_second_workflow_artifact_replace(
     monkeypatch.setattr(
         "streambuild.cli.workflow_artifacts._helpers.build_publication.os.replace",
         staged_replace,
+    )
+
+
+def build_drifted_source_plan_inputs(
+    *,
+    project_root: Path,
+    declared_settings: tuple[tuple[str, str], ...],
+    catalog_setting_overrides: tuple[tuple[str, str], ...],
+    omitted_catalog_settings: tuple[str, ...],
+) -> tuple[DirectWarehouseSnapshot, AdapterDirectFingerprintSnapshot]:
+    """Write the managed-source scope project and observe it deployed with settled SQL."""
+
+    request: DirectBuildRequest = build_managed_source_execution_request(
+        project_root=project_root,
+        declared_settings=declared_settings,
+    )
+    return (
+        build_managed_source_snapshot(
+            request=request,
+            catalog_setting_overrides=catalog_setting_overrides,
+            omitted_catalog_settings=omitted_catalog_settings,
+        ),
+        build_direct_fingerprint_snapshot(
+            analysis=analyze_direct_scope_project(project_root=project_root)
+        ),
     )

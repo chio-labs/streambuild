@@ -30,6 +30,7 @@ from streambuild.compiler.planner.models import (
     PreparedShadowObject,
 )
 from streambuild.dev_server.exceptions import DevServerError
+from streambuild.executor.population.models import PopulationSourceRecreation
 
 _SOURCE_RECREATION_WARNING_CODE: str = "managed_source_recreated"
 _TIMESTAMP_DRIVEN_MODES: frozenset[ReplayLineageMode] = frozenset(
@@ -129,11 +130,20 @@ def build_mode_aware_plan_payload(
             planned_at=planned_at,
             command=command,
         )
+    source_name_by_relation: dict[str, str] = _source_name_by_relation(analysis=analysis)
+    recreations: tuple[PopulationSourceRecreation, ...] = (
+        () if direct is None else direct.workflow.recreated_sources
+    )
     phases: list[dict[str, object]] = []
     if virtual is not None:
         phases.append(_virtual_phase_payload(preparation=virtual))
     if direct is not None:
-        phases.append(_direct_phase_payload(preparation=direct))
+        phases.append(
+            _direct_phase_payload(
+                preparation=direct,
+                source_name_by_relation=source_name_by_relation,
+            )
+        )
     mode: str = (
         "mixed"
         if isinstance(preparation, MixedWorkflowPreparation)
@@ -160,6 +170,13 @@ def build_mode_aware_plan_payload(
                 "mode": "captured_at_execution",
                 "continuesLive": True,
             },
+            "sourceRecreations": [
+                _source_recreation_payload(
+                    recreation=recreation,
+                    source_name_by_relation=source_name_by_relation,
+                )
+                for recreation in recreations
+            ],
         }
     )
     if direct is not None and direct.workflow.recreated_sources:
@@ -220,7 +237,63 @@ def _empty_plan_payload(
     }
 
 
-def _direct_phase_payload(*, preparation: DirectWorkflowPreparation) -> dict[str, object]:
+def _source_name_by_relation(*, analysis: CompileAnalysis) -> dict[str, str]:
+    names: dict[str, str] = {}
+    key: LogicalResourceKey
+    for key, resources in analysis.realized_project.resources_by_logical_key.items():
+        names.update((resource.name, key.name) for resource in resources)
+    return names
+
+
+def _source_recreation_payload(
+    *, recreation: PopulationSourceRecreation, source_name_by_relation: dict[str, str]
+) -> dict[str, object]:
+    relation_name: str = recreation.managed_source.resource.name
+    return {
+        "sourceName": source_name_by_relation.get(relation_name, relation_name),
+        "relationName": relation_name,
+        "landingViewName": recreation.landing_view_name,
+        "landingRelationName": recreation.landing_relation_name,
+        "stagedRelationName": recreation.staged_relation_name,
+        "consumerGroup": recreation.consumer_group,
+        "driftedSettings": list(recreation.drifted_setting_names),
+        "message": render_source_recreation_notice(recreation),
+    }
+
+
+def _source_recreation_actions(
+    *,
+    recreations: tuple[PopulationSourceRecreation, ...],
+    source_name_by_relation: dict[str, str],
+) -> list[dict[str, object]]:
+    """List the stage, swap, and retire steps that replace each drifted Kafka source."""
+
+    actions: list[dict[str, object]] = []
+    recreation: PopulationSourceRecreation
+    for recreation in recreations:
+        relation_name: str = recreation.managed_source.resource.name
+        source_name: str = source_name_by_relation.get(relation_name, relation_name)
+        action: str
+        physical_name: str
+        for action, physical_name in (
+            ("stage", recreation.staged_relation_name),
+            ("swap", relation_name),
+            ("retire", recreation.staged_relation_name),
+        ):
+            actions.append(
+                {
+                    "phase": "preparation",
+                    "action": action,
+                    "logicalName": source_name,
+                    "physicalName": physical_name,
+                }
+            )
+    return actions
+
+
+def _direct_phase_payload(
+    *, preparation: DirectWorkflowPreparation, source_name_by_relation: dict[str, str]
+) -> dict[str, object]:
     plan: DirectPlan = preparation.preview.plan
     relation_names: list[str] = []
     for entry in plan.entries:
@@ -232,7 +305,11 @@ def _direct_phase_payload(*, preparation: DirectWorkflowPreparation) -> dict[str
         "modelNames": [entry.model_key.name for entry in plan.entries],
         "contextModelNames": [item.key.name for item in plan.prerequisite_scope],
         "relationNames": relation_names,
-        "actions": [
+        "actions": _source_recreation_actions(
+            recreations=preparation.workflow.recreated_sources,
+            source_name_by_relation=source_name_by_relation,
+        )
+        + [
             {
                 "phase": "teardown",
                 "action": str(operation.action),

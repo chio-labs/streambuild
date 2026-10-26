@@ -23,6 +23,9 @@ from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
 from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
 from streambuild.compiler.planner.types import DirectSelectionMode
+from streambuild.executor.direct.main.drifted_managed_source_owners import (
+    drifted_managed_source_owners,
+)
 
 
 def build_direct_build_preview(
@@ -115,13 +118,27 @@ def _changed_direct_model_keys(
     baseline_by_identity: dict[str, AdapterDirectFingerprintRecord] = {
         baseline.logical_model_identity: baseline for baseline in snapshot.fingerprints.baselines
     }
+    drifted_source_owners: frozenset[str] = frozenset(
+        drifted_managed_source_owners(
+            realized_project=analysis.realized_project,
+            catalog=snapshot.catalog,
+        )
+    )
+    source_owner_model_key_set: set[LogicalResourceKey] = set()
+    for pipeline in analysis.compiled_project.pipelines:
+        if pipeline.pipeline.name in drifted_source_owners:
+            source_owner_model_key_set.update(model.key for model in pipeline.models)
+    source_owner_model_keys: frozenset[LogicalResourceKey] = frozenset(source_owner_model_key_set)
     return frozenset(
         model.key
         for model in analysis.compiled_project.models
         if model.key in direct_model_keys
-        and DirectModelFingerprint.drift_reasons(
-            model=model,
-            baseline=baseline_by_identity.get(f"{database}.{model.key.name}"),
+        and (
+            model.key in source_owner_model_keys
+            or DirectModelFingerprint.drift_reasons(
+                model=model,
+                baseline=baseline_by_identity.get(f"{database}.{model.key.name}"),
+            )
         )
     )
 

@@ -1043,6 +1043,7 @@ def run_direct_plan(
     connection: AdapterConnection,
     selectors: tuple[str, ...] = (),
     start_time: str | None = None,
+    changed: bool = False,
 ) -> int:
     """Run `stb plan` in direct mode against a live warehouse connection."""
 
@@ -1056,6 +1057,7 @@ def run_direct_plan(
             deployment_id=None,
             json_output=True,
             verbose=False,
+            changed=changed,
         ),
         client=connection,
         loaded_project=load_project_input_for_path(path=project_root),

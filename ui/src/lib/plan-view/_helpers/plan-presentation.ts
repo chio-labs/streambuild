@@ -1,9 +1,11 @@
+import { STRUCTURED_PLAN_WARNING_CODES } from '$lib/planning/constants';
 import type { Plan } from '$lib/planning/types';
 import type { PlanSummary } from '$lib/plan-view/types';
 
 export function summarizePlan(plan: Plan | null): PlanSummary {
 	const planEntries: Plan['entries'] = plan?.entries ?? [];
 	const replayRoots: Plan['replayRoots'] = plan?.replayRoots ?? [];
+	const sourceRecreations: Plan['sourceRecreations'] = plan?.sourceRecreations ?? [];
 	return {
 		planEntries,
 		plannedModelNames: Array.from(
@@ -25,6 +27,11 @@ export function summarizePlan(plan: Plan | null): PlanSummary {
 		missingUpstreamCount: planEntries.filter((entry) => entry.reason === 'missing_upstream').length,
 		riskyOwnership: planEntries.flatMap((entry) =>
 			entry.ownership.filter((item) => item.ownership !== 'direct' && item.ownership !== 'absent')
+		),
+		sourceRecreations,
+		plannerWarnings: (plan?.warnings ?? []).filter(
+			(warning) =>
+				sourceRecreations.length === 0 || !STRUCTURED_PLAN_WARNING_CODES.has(warning.code)
 		)
 	};
 }

@@ -124,3 +124,16 @@ class CliVirtualWorkflowParityTestCase:
     description: str
     deployment_id: str
     expected_removed_step_name: str
+
+
+@dataclass(frozen=True)
+class CliChangedSourceDriftPlanTestCase:
+    description: str
+    declared_settings: tuple[tuple[str, str], ...]
+    catalog_setting_overrides: tuple[tuple[str, str], ...]
+    omitted_catalog_settings: tuple[str, ...] = ()
+    owner_selector: str = "pipeline:pl__orders"
+    expected_execution_scope: tuple[str, ...] = ()
+    expected_recreated_relation_names: tuple[str, ...] = ()
+    expected_drifted_settings: tuple[str, ...] = ()
+    expected_error_fragment: str = ""

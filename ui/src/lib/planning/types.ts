@@ -42,6 +42,16 @@ type PlanReplayRoot = {
 	settings: Record<string, string>;
 };
 type PlanWarning = { code: string; message: string; relatedModel: string | null };
+type PlanSourceRecreation = {
+	sourceName: string;
+	relationName: string;
+	landingViewName: string;
+	landingRelationName: string;
+	stagedRelationName: string;
+	consumerGroup: string;
+	driftedSettings: string[];
+	message: string;
+};
 type PlanProtection = { pipelineName: string; warning: string; confirmation: string };
 type PlanPrerequisite = {
 	name: string;
@@ -84,6 +94,7 @@ type PlanBase = {
 	creation: PlanAction[];
 	replayRoots: PlanReplayRoot[];
 	warnings: PlanWarning[];
+	sourceRecreations: PlanSourceRecreation[];
 	protections: PlanProtection[];
 	replayWindow: ReplayWindow;
 	plannedAt: string;

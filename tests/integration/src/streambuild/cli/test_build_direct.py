@@ -29,6 +29,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectBuildGuardIntegrationTestCase,
     CliDirectBuildIntegrationTestCase,
     CliDirectBuildRerunIntegrationTestCase,
+    CliDirectChangedSourceRecreationIntegrationTestCase,
     CliDirectExecutionStepFailureIntegrationTestCase,
     CliDirectFutureSourceStartTimeIntegrationTestCase,
     CliDirectLandedAtClockIntegrationTestCase,
@@ -50,6 +51,7 @@ from tests.integration.src.streambuild.cli._test_types import (
 )
 from tests.integration.src.streambuild.cli.helpers import (
     DIRECT_BUILD_LANDING_TABLE_NAME,
+    DIRECT_BUILD_MODEL_NAME,
     DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME,
     AdoptedLiveInsertConnection,
     DeniedDirectMetadataConnection,
@@ -1134,6 +1136,102 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
     assert landing_row_count == len(test_case.landing_rows)
     assert order_ids == test_case.expected_order_ids
     assert "committed offsets" not in rebuild_error
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectChangedSourceRecreationIntegrationTestCase(
+            description="changed selection picks up a declared consumer setting",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_settings=(("kafka_max_block_size", "500"),),
+            expected_execution_scope=(DIRECT_BUILD_MODEL_NAME,),
+            expected_drifted_settings=("kafka_max_block_size",),
+            expected_kafka_ddl_fragments=("kafka_max_block_size = '500'",),
+            expected_order_ids=("order-1", "order-2"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drifted_source_settings_when_building_changed_then_owner_recreates_source(
+    test_case: CliDirectChangedSourceRecreationIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        first_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        state_before: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        write_direct_build_project(
+            project_root=tmp_path, source_settings=test_case.rebuilt_settings
+        )
+        plan_exit_code: int = run_direct_plan(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            changed=True,
+        )
+        plan_payload: dict[str, object] = json.loads(capsys.readouterr().out)
+        rebuild_exit_code: int = run_direct_changed_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        _ = capsys.readouterr()
+        state_after: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        order_ids: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        replan_exit_code: int = run_direct_plan(
+            project_root=tmp_path,
+            database=clickhouse_database,
+            connection=connection,
+            changed=True,
+        )
+        replan_payload: dict[str, object] = json.loads(capsys.readouterr().out)
+    finally:
+        connection.close()
+
+    recreations: list[dict[str, object]] = cast(
+        list[dict[str, object]], plan_payload["source_recreations"]
+    )
+    execution_scope: list[dict[str, str]] = cast(
+        list[dict[str, str]], plan_payload["execution_scope"]
+    )
+    assert (first_exit_code, plan_exit_code, rebuild_exit_code, replan_exit_code) == (0, 0, 0, 0)
+    assert plan_payload["selection_mode"] == "changed"
+    assert tuple(key["name"] for key in execution_scope) == test_case.expected_execution_scope
+    assert [recreation["drifted_settings"] for recreation in recreations] == [
+        list(test_case.expected_drifted_settings)
+    ]
+    assert state_after["kafka__orders"][0] != state_before["kafka__orders"][0]
+    assert all(
+        fragment in state_after["kafka__orders"][1]
+        for fragment in test_case.expected_kafka_ddl_fragments
+    )
+    assert state_after["raw__orders"][0] == state_before["raw__orders"][0]
+    assert DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME not in state_after
+    assert order_ids == test_case.expected_order_ids
+    assert replan_payload["execution_scope"] == []
+    assert replan_payload["source_recreations"] == []
 
 
 @pytest.mark.integration

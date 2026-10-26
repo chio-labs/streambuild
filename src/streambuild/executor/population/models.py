@@ -15,6 +15,7 @@ from streambuild.compiler.compile.models import (
 )
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.planner.types import RebuildExecutionMode
+from streambuild.executor.population.constants import STAGED_SOURCE_NAME_PREFIX
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,12 @@ class PopulationSourceRecreation:
     landing_relation_name: str
     consumer_group: str
     drifted_setting_names: tuple[str, ...]
+
+    @property
+    def staged_relation_name(self) -> str:
+        """Name the declared Kafka table staged beside the drifted one before the swap."""
+
+        return f"{STAGED_SOURCE_NAME_PREFIX}{self.managed_source.resource.name}"
 
 
 @dataclass(frozen=True)

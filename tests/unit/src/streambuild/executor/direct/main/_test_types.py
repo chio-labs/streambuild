@@ -107,3 +107,13 @@ class DirectSourceInterruptionTestCase:
     description: str
     rejected_prefix: str
     expected_failed_step_id: str
+
+
+@dataclass(frozen=True)
+class DirectDriftedSourceOwnerTestCase:
+    description: str
+    declared_settings: tuple[tuple[str, str], ...]
+    catalog_setting_overrides: tuple[tuple[str, str], ...]
+    omitted_catalog_settings: tuple[str, ...]
+    extra_landing_columns: tuple[tuple[str, str], ...]
+    expected_owner_pipelines: tuple[str, ...]

@@ -196,6 +196,7 @@ def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution
     assert payload["phases"][0]["contextModelNames"] == ["orders"]
     assert payload["phases"][0]["actions"][0]["logicalName"] == "orders_summary"
     assert payload["warnings"][0]["relatedModel"] == "orders_summary"
+    assert payload["sourceRecreations"] == []
     assert options.deployment_id == deployment_id
 
 
@@ -211,6 +212,21 @@ def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution
                 "(kafka_topic_list)",
                 "raw__orders and its rows are kept",
                 "committed offsets of consumer group 'streambuild_orders_analytics'",
+            ),
+            expected_source_recreation={
+                "sourceName": "orders",
+                "relationName": "kafka__orders",
+                "landingViewName": "mv__orders",
+                "landingRelationName": "raw__orders",
+                "stagedRelationName": "_streambuild_next__kafka__orders",
+                "consumerGroup": "streambuild_orders_analytics",
+                "driftedSettings": ["kafka_topic_list"],
+            },
+            expected_actions=(
+                ("preparation", "stage", "orders", "_streambuild_next__kafka__orders"),
+                ("preparation", "swap", "orders", "kafka__orders"),
+                ("preparation", "retire", "orders", "_streambuild_next__kafka__orders"),
+                ("creation", "create", "orders_clean", "tbl__orders_clean"),
             ),
         )
     ],
@@ -229,11 +245,23 @@ def test_given_source_recreation_when_planning_then_plan_describes_it(
     ):
         response: Response = client.get("/api/plan", params={"select": "orders_clean"})
 
-    warnings: list[dict] = response.json()["warnings"]
+    payload: dict = response.json()
+    warnings: list[dict] = payload["warnings"]
     message: str = warnings[0]["message"]
+    recreation: dict = payload["sourceRecreations"][0]
+    actions: list[dict] = payload["phases"][0]["actions"]
     assert response.status_code == 200
     assert [warning["code"] for warning in warnings] == [test_case.expected_warning_code]
     assert all(fragment in message for fragment in test_case.expected_message_fragments)
+    assert len(payload["sourceRecreations"]) == 1
+    assert {key: recreation[key] for key in test_case.expected_source_recreation} == (
+        test_case.expected_source_recreation
+    )
+    assert recreation["message"] == message
+    assert tuple(
+        (action["phase"], action["action"], action["logicalName"], action["physicalName"])
+        for action in actions
+    ) == (test_case.expected_actions)
 
 
 @pytest.mark.parametrize(

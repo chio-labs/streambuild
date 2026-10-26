@@ -60,8 +60,6 @@ from streambuild.executor.population.models import (
 from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
 from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
 
-_STAGED_SOURCE_NAME_PREFIX: str = "_streambuild_next__"
-
 
 def assemble_direct_build_workflow(
     *,
@@ -388,7 +386,7 @@ def _source_recreation_rendered(
 
 
 def _staged_source_name(*, recreation: PopulationSourceRecreation) -> str:
-    return f"{_STAGED_SOURCE_NAME_PREFIX}{recreation.managed_source.resource.name}"
+    return recreation.staged_relation_name
 
 
 def _drop_staged_source_sql(*, recreation: PopulationSourceRecreation) -> str:
