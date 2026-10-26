@@ -622,6 +622,10 @@ SOURCE_RECREATION_MESSAGE: str = (
     "kafka__orders and mv__orders are recreated with the declared settings (kafka_topic_list); "
     "raw__orders and its rows are kept."
 )
+SOURCE_RECREATION_SQL_DIFF: str = (
+    "--- previous\n+++ current\n@@ -1,2 +1,2 @@\n SELECT order_id\n-FROM orders\n"
+    "+FROM orders WHERE order_id > 0\n"
+)
 SOURCE_RECREATION: dict[str, object] = {
     "sourceName": "orders",
     "relationName": "kafka__orders",
@@ -655,8 +659,8 @@ def build_source_recreation_plan_payload(
                 "drivingInput": None,
                 "isReplayRoot": False,
                 "sqlChange": {
-                    "status": "no_query_change",
-                    "unifiedDiff": None,
+                    "status": "query_changed",
+                    "unifiedDiff": SOURCE_RECREATION_SQL_DIFF,
                     "warning": None,
                 },
             }

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -88,4 +89,9 @@ def test_given_planned_source_recreation_when_viewing_plan_then_it_is_listed_as_
         test_case.expected_warning_count
     )
     expect(page.get_by_text("source drift", exact=True)).to_be_visible()
+    page.get_by_text("view SQL diff", exact=True).click()
+    added_line: Locator = page.locator('[data-diff-kind="add"]')
+    expect(added_line).to_have_class(re.compile(r"\badd\b"))
+    expect(added_line).to_contain_text("FROM orders WHERE order_id > 0")
+    expect(page.get_by_label("Changed lines")).to_have_text(re.compile(r"\+1\s*−1"))
     assert page_errors == []

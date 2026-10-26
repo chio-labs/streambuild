@@ -144,3 +144,4 @@ class CliChangedSourceDriftPlanTestCase:
     expected_selected_pipelines: tuple[str, ...] = ()
     expected_text_fragment: str = ""
     unexpected_error_fragment: str = ""
+    protected_pipelines: tuple[str, ...] = ()

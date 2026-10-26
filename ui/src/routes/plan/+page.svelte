@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import CopyIcon from '@lucide/svelte/icons/copy';
 	import PlayIcon from '@lucide/svelte/icons/play';
-	import CheckIcon from '@lucide/svelte/icons/check';
 	import RotateIcon from '@lucide/svelte/icons/rotate-ccw';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import TerminalIcon from '@lucide/svelte/icons/terminal';
@@ -12,6 +10,8 @@
 	import SelectionCombobox from '$lib/presentation/components/plan/selection-combobox.svelte';
 	import PlanGraph from '$lib/presentation/components/plan/plan-graph.svelte';
 	import ReplayWindowControl from '$lib/presentation/components/plan/replay-window.svelte';
+	import CopyCommandButton from '$lib/presentation/components/plan/copy-command-button.svelte';
+	import SqlDiff from '$lib/presentation/components/sql-diff.svelte';
 	import { startBuild } from '$lib/api/main/build/start-build';
 	import { getProject } from '$lib/api/main/project/get-project';
 	import { fetchRuns } from '$lib/api/main/runs/fetch-runs';
@@ -156,14 +156,6 @@
 	const rootSources = $derived<ReturnType<typeof planView.rootSources>>(
 		planView.rootSources(project, summary.plannedModelNames)
 	);
-	let copied = $state<boolean>(false);
-	async function copyCommand(): Promise<void> {
-		try {
-			await navigator.clipboard.writeText(executionCommand);
-			copied = true;
-			setTimeout(() => (copied = false), 1600);
-		} catch {}
-	}
 	let pasted = $state<string>('');
 	let pasteOpen = $state<boolean>(false);
 	let replacedNote = $state<string>('');
@@ -586,9 +578,9 @@
 									<summary class="text-muted-foreground cursor-pointer font-mono text-[10px]">
 										view SQL diff
 									</summary>
-									<pre
-										class="bg-[var(--sb-inset)] mt-1 max-h-56 overflow-auto rounded-[3px] p-2 font-mono text-[10px] leading-relaxed"
-									>{entry.sqlChange.unifiedDiff}</pre>
+									<div class="mt-1">
+										<SqlDiff diff={entry.sqlChange.unifiedDiff} maxHeight="14rem" />
+									</div>
 								</details>
 							{/if}
 						</div>
@@ -831,19 +823,10 @@
 				class="bg-[var(--sb-inset)] order-last min-w-0 basis-full truncate rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px] lg:order-none lg:ml-auto lg:flex-1 lg:basis-auto"
 				>$ {executionCommand}</code
 			>
-			<button
-				class="flex shrink-0 items-center gap-1.5 rounded-[4px] border px-2.5 py-1.5 font-mono text-[11px] {copied
-					? 'border-[var(--sb-success)]'
-					: 'border-border text-muted-foreground hover:text-foreground'}"
+			<CopyCommandButton
+				command={executionCommand}
 				disabled={planLoading || planError !== null || plan === null}
-				onclick={copyCommand}
-			>
-				{#if copied}
-					<CheckIcon size={12} color="var(--sb-success)" /> copied
-				{:else}
-					<CopyIcon size={12} /> copy
-				{/if}
-			</button>
+			/>
 			<button
 				class="bg-primary flex shrink-0 items-center gap-1.5 rounded-[4px] px-3 py-1.5 font-mono text-[11px] font-medium text-white disabled:opacity-60"
 				title={!warehouseConnected

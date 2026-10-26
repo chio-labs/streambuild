@@ -289,11 +289,13 @@ def build_managed_source_execution_request(
     declared_settings: tuple[tuple[str, str], ...],
     selected_model_names: tuple[str, ...] = ("alpha",),
     extra_reader_pipelines: tuple[tuple[str, str], ...] = (),
+    protected_pipelines: tuple[str, ...] = (),
 ) -> DirectBuildRequest:
     """Plan the scope project plus a downstream pipeline that only reads ``alpha``.
 
     Each ``(pipeline name, mode)`` in ``extra_reader_pipelines`` adds a pipeline whose single
-    ``<name>_model`` reads the ``orders`` source directly.
+    ``<name>_model`` reads the ``orders`` source directly; ``protected_pipelines`` require a
+    confirmation to rebuild.
     """
 
     write_direct_scope_project(project_root=project_root)
@@ -308,6 +310,15 @@ def build_managed_source_execution_request(
             'SELECT order_id::UInt64 AS order_id FROM __source("orders")\n',
             encoding="utf-8",
         )
+    protected_name: str
+    for protected_name in protected_pipelines:
+        with (project_root / "pipelines" / protected_name / "pipeline.toml").open(
+            "a", encoding="utf-8"
+        ) as config:
+            config.write(
+                f'[protection]\nwarning = "{protected_name} serves customers"\n'
+                f'confirmation = "rebuild:{protected_name}"\n'
+            )
     summary_root: Path = project_root / "pipelines" / "pl__order_summary"
     summary_root.mkdir(parents=True)
     (summary_root / "order_summary.sql").write_text(

@@ -1,8 +1,8 @@
 import { STRUCTURED_PLAN_WARNING_CODES } from '$lib/planning/constants';
 import type { Plan } from '$lib/planning/types';
+import type { PlanSummary } from '$lib/plan-view/types';
 
 type PlanEntryReason = Plan['entries'][number]['reason'];
-import type { PlanSummary } from '$lib/plan-view/types';
 
 export function summarizePlan(plan: Plan | null): PlanSummary {
 	const planEntries: Plan['entries'] = plan?.entries ?? [];

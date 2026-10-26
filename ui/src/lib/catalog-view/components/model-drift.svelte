@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SqlDiff from '$lib/presentation/components/sql-diff.svelte';
 	import type { Model } from '$lib/domain/types';
 
 	type ModelSemanticDrift = Model['live']['semanticDrift'];
@@ -85,7 +86,7 @@
 				{#if drift.query.status === 'unavailable'}
 					<p class="text-muted-foreground text-[11.5px]">The live query relation is missing; no query diff is possible.</p>
 				{:else if drift.query.unifiedDiff}
-					<pre class="bg-[var(--sb-inset)] max-h-64 overflow-auto rounded-[3px] p-2.5 font-mono text-[10.5px] leading-relaxed">{drift.query.unifiedDiff}</pre>
+					<SqlDiff diff={drift.query.unifiedDiff} maxHeight="16rem" />
 				{:else}
 					<p class="text-muted-foreground text-[11.5px]">Canonical live and compiled queries match.</p>
 				{/if}

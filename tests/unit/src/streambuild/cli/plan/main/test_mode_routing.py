@@ -244,6 +244,7 @@ def test_given_drifted_managed_source_when_planning_changed_then_owner_plan_matc
         omitted_catalog_settings=test_case.omitted_catalog_settings,
         extra_reader_pipelines=test_case.extra_reader_pipelines,
         changed_model_names=test_case.changed_model_names,
+        protected_pipelines=test_case.protected_pipelines,
     )
 
     changed_exit_code: int = run_scope_project_plan(
@@ -321,6 +322,7 @@ def test_given_undrifted_managed_source_when_planning_changed_then_nothing_is_se
         omitted_catalog_settings=test_case.omitted_catalog_settings,
         extra_reader_pipelines=test_case.extra_reader_pipelines,
         changed_model_names=test_case.changed_model_names,
+        protected_pipelines=test_case.protected_pipelines,
     )
 
     exit_code: int = run_scope_project_plan(
@@ -375,6 +377,7 @@ def test_given_blocking_source_drift_when_planning_changed_then_it_fails_like_a_
         omitted_catalog_settings=test_case.omitted_catalog_settings,
         extra_reader_pipelines=test_case.extra_reader_pipelines,
         changed_model_names=test_case.changed_model_names,
+        protected_pipelines=test_case.protected_pipelines,
     )
 
     changed_exit_code: int = run_scope_project_plan(
@@ -438,6 +441,39 @@ def test_given_blocking_source_drift_when_planning_changed_then_it_fails_like_a_
             expected_reasons=("changed", "downstream_of_selected", "downstream_of_selected"),
         ),
         CliChangedSourceDriftPlanTestCase(
+            description="an unprotected reader is preferred over a protected earlier name",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            protected_pipelines=("pl__order_audit",),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=(*(("source_drift",) * 4), "downstream_of_selected"),
+            expected_selected_pipelines=("pl__orders",),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="an unprotected earlier name is kept over a protected later reader",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            protected_pipelines=("pl__orders",),
+            expected_execution_scope=("order_audit_model",),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=("source_drift",),
+            expected_selected_pipelines=("pl__order_audit",),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="among protected readers the first name is chosen",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            protected_pipelines=("pl__order_audit", "pl__orders"),
+            expected_execution_scope=("order_audit_model",),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=("source_drift",),
+            expected_selected_pipelines=("pl__order_audit",),
+        ),
+        CliChangedSourceDriftPlanTestCase(
             description="a virtual reader is skipped in favour of the direct one",
             declared_settings=(),
             catalog_setting_overrides=_TOPIC_DRIFT,
@@ -465,6 +501,7 @@ def test_given_drifted_source_readers_when_planning_changed_then_one_owner_is_re
         omitted_catalog_settings=test_case.omitted_catalog_settings,
         extra_reader_pipelines=test_case.extra_reader_pipelines,
         changed_model_names=test_case.changed_model_names,
+        protected_pipelines=test_case.protected_pipelines,
     )
 
     json_exit_code: int = run_scope_project_plan(
@@ -509,7 +546,9 @@ def test_given_drifted_source_readers_when_planning_changed_then_one_owner_is_re
             expected_error_fragment=(
                 "--changed selects pipeline:pl__orders because the settings of source 'orders' "
                 "drifted from the project, and --start-time would rebuild their models from "
-                "that time only"
+                "that time only, discarding earlier history. Run `stb build --select "
+                "pipeline:pl__orders` without --start-time first, then rerun with --changed "
+                "--start-time."
             ),
         ),
     ],

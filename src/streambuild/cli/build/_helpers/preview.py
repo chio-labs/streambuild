@@ -5,6 +5,7 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterDirectFingerprintRecord
 from streambuild.adapter.types import AdapterOptionalStateStatus
+from streambuild.cli.build._helpers.confirmation import build_protection_requirements
 from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
@@ -157,7 +158,7 @@ def _source_drift_selections(
     snapshot: DirectWarehouseSnapshot,
     sql_changed_model_keys: frozenset[LogicalResourceKey],
 ) -> tuple[DirectSourceDriftSelection, ...]:
-    """Add one direct owner per drifted managed source no changed model already rebuilds."""
+    """Add one direct owner per drifted source, preferring unprotected owners, then by name."""
 
     direct_models_by_pipeline: dict[str, tuple[LogicalResourceKey, ...]] = {}
     for pipeline in analysis.compiled_project.pipelines:
@@ -173,7 +174,17 @@ def _source_drift_selections(
         catalog=snapshot.catalog,
     ):
         direct_owners: tuple[str, ...] = tuple(
-            name for name in drifted.owner_pipeline_names if name in direct_models_by_pipeline
+            sorted(
+                (
+                    name
+                    for name in drifted.owner_pipeline_names
+                    if name in direct_models_by_pipeline
+                ),
+                key=lambda name: (
+                    _is_protected(analysis=analysis, model_keys=direct_models_by_pipeline[name]),
+                    name,
+                ),
+            )
         )
         if not direct_owners or _rebuilds_any_pipeline(
             analysis=analysis,
@@ -193,6 +204,17 @@ def _source_drift_selections(
         )
         selected_keys.update(owner_keys)
     return tuple(selections)
+
+
+def _is_protected(*, analysis: CompileAnalysis, model_keys: tuple[LogicalResourceKey, ...]) -> bool:
+    """Report whether rebuilding these models would require a protection confirmation."""
+
+    return bool(
+        build_protection_requirements(
+            compiled_project=analysis.compiled_project,
+            execution_model_keys=frozenset(model_keys),
+        )
+    )
 
 
 def _rebuilds_any_pipeline(
@@ -225,17 +247,18 @@ def _reject_source_drift_start_time(
 
     if start_time is None or not source_drift_selections:
         return
-    selectors: str = ", ".join(
+    names: tuple[str, ...] = tuple(
         f"pipeline:{selection.pipeline_name}" for selection in source_drift_selections
     )
+    selectors: str = ", ".join(names)
     sources: str = ", ".join(
         f"'{selection.source_key.name}'" for selection in source_drift_selections
     )
     raise CliUserError(
         f"--changed selects {selectors} because the settings of source {sources} drifted from "
         "the project, and --start-time would rebuild their models from that time only, "
-        f"discarding earlier history. Build {selectors} without --start-time first, or select "
-        "them explicitly with --select to replay them from the start time."
+        f"discarding earlier history. Run `stb build --select {' '.join(names)}` without "
+        "--start-time first, then rerun with --changed --start-time."
     )
 
 

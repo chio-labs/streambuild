@@ -19,6 +19,7 @@ from streambuild.compiler.compile.models import (
     DesiredMaterializedView,
     LogicalResourceKey,
 )
+from streambuild.compiler.discovery.types import PipelineMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan, DirectSourceDriftSelection
 from streambuild.executor.direct.exceptions import DirectBuildError
@@ -199,6 +200,11 @@ def _unselected_source_hints(
 ) -> dict[str, str]:
     """Explain, per Kafka relation, how to select a build that may recreate the source."""
 
+    direct_pipeline_names: frozenset[str] = frozenset(
+        pipeline.pipeline.name
+        for pipeline in realized_project.project.pipelines
+        if PipelineMode(pipeline.pipeline.mode) == PipelineMode.DIRECT
+    )
     hints: dict[str, str] = {}
     key: LogicalResourceKey
     pipeline_names: tuple[str, ...]
@@ -206,10 +212,15 @@ def _unselected_source_hints(
         if not pipeline_names:
             continue
         readers: str = ", ".join(repr(name) for name in sorted(pipeline_names))
+        direct_readers: tuple[str, ...] = tuple(
+            sorted(name for name in pipeline_names if name in direct_pipeline_names)
+        )
+        selectors: str = ", ".join(
+            f"pipeline:{name}" for name in (direct_readers[:1] or sorted(pipeline_names))
+        )
         hint: str = (
             f"source '{key.name}' is read directly only by pipeline {readers}, which this "
-            "build does not "
-            f"rebuild; include pipeline:{min(pipeline_names)} in the selection to recreate it "
+            f"build does not rebuild; include {selectors} in the selection to recreate it "
             "with the declared settings"
         )
         hints.update(
