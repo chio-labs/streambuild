@@ -375,7 +375,7 @@
 					{#if changed}
 						<div class="font-mono text-[13px]">changed models</div>
 						<div class="text-muted-foreground pt-1 font-mono text-[10.5px]">
-							resolved from current SQL baselines
+							resolved from current SQL baselines and source settings
 						</div>
 					{:else if selectors.length === 0}
 						<div class="font-mono text-[13px]">no selector — all models</div>
@@ -429,9 +429,64 @@
 						{#if summary.missingUpstreamCount > 0}
 							· {summary.missingUpstreamCount} missing upstream
 						{/if}
+						{#if summary.sourceRecreations.length > 0}
+							· {summary.sourceRecreations.length}
+							{summary.sourceRecreations.length === 1 ? 'source' : 'sources'} recreated
+						{/if}
 					</div>
 				</div>
 			</div>
+
+			{#if summary.sourceRecreations.length > 0}
+				<div data-testid="plan-source-recreations">
+					<div
+						class="text-[var(--sb-text-faint)] flex items-baseline gap-2 pb-2 font-mono text-[10px] uppercase tracking-[0.14em]"
+					>
+						Sources recreated
+						<span class="normal-case tracking-normal">— declared Kafka settings changed</span>
+					</div>
+					<div class="overflow-hidden rounded-[4px] border border-border">
+						{#each summary.sourceRecreations as recreation (recreation.relationName)}
+							<div
+								class="border-b border-[var(--border-subtle)] px-2.5 py-2 last:border-b-0"
+								title={recreation.message}
+							>
+								<div class="flex items-center gap-2.5">
+									<span class="code truncate text-[11px]">{recreation.sourceName}</span>
+									<span class="text-[var(--sb-text-faint)] ml-auto shrink-0 font-mono text-[10px]">
+										source
+									</span>
+								</div>
+								<div class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 pt-1.5 font-mono text-[10.5px]">
+									<span class="text-[var(--sb-text-faint)]">recreated</span>
+									<span class="flex min-w-0 flex-wrap gap-x-2">
+										<span class="code truncate">{recreation.relationName}</span>
+										<span class="text-[var(--sb-text-faint)]">Kafka</span>
+										<span class="code truncate">{recreation.landingViewName}</span>
+										<span class="text-[var(--sb-text-faint)]">MV</span>
+									</span>
+									<span class="text-[var(--sb-text-faint)]">kept</span>
+									<span class="flex min-w-0 flex-wrap gap-x-2">
+										<span class="code truncate">{recreation.landingRelationName}</span>
+										<span style:color="var(--sb-success)">rows kept</span>
+									</span>
+									<span class="text-[var(--sb-text-faint)]">settings</span>
+									<span class="flex min-w-0 flex-wrap gap-1.5">
+										{#each recreation.driftedSettings as setting (setting)}
+											<code class="sb-tag code">{setting}</code>
+										{/each}
+									</span>
+								</div>
+								<div class="text-[var(--sb-text-faint)] pt-1.5 font-mono text-[10px] leading-relaxed">
+									Resumes from the committed offsets of consumer group
+									<code class="text-muted-foreground">{recreation.consumerGroup}</code>; a topic where the
+									group has none follows the Kafka engine's offset reset policy.
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 
 			<div>
 				<div
@@ -653,7 +708,7 @@
 			{/if}
 
 			<!-- planner warnings straight from the server plan -->
-			{#if plan?.warnings.length}
+			{#if summary.plannerWarnings.length}
 				<div
 					class="rounded-[4px] border p-3"
 					style:border-color="color-mix(in srgb, var(--sb-warning) 45%, var(--border))"
@@ -664,7 +719,7 @@
 					>
 						Planner warnings
 					</div>
-					{#each plan.warnings as warning, index (index)}
+					{#each summary.plannerWarnings as warning, index (index)}
 						<div class="border-b border-[var(--border-subtle)] py-1.5 last:border-b-0">
 							{#if warning.relatedModel}
 								<div class="code text-[11px]">{warning.relatedModel}</div>

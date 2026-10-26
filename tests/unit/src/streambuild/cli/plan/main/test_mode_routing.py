@@ -6,16 +6,19 @@ import pytest
 from streambuild.adapter.models import AdapterDirectFingerprintSnapshot
 from streambuild.cli.plan.constants import DIRECT_MODE_LABEL, VIRTUAL_ENVIRONMENTS_MODE_LABEL
 from streambuild.cli.workflow_artifacts.main._publish_plan_workflow import publish_plan_workflow
+from streambuild.compiler.planner.models import DirectWarehouseSnapshot
 from streambuild.executor.workflow.models import BuildWorkflow
 from streambuild.executor.workflow.types import WorkflowMode
 from tests.unit.src.streambuild.cli.plan.main._test_types import (
     CliChangedPlanTestCase,
+    CliChangedSourceDriftPlanTestCase,
     CliDirectPlanFlagRejectionTestCase,
     CliPlanDeploymentIdRejectionTestCase,
     CliPlanModeRoutingTestCase,
     CliPlanPublicationFailureTestCase,
 )
 from tests.unit.src.streambuild.cli.plan.main.helpers import (
+    build_drifted_source_plan_inputs,
     fail_second_workflow_artifact_replace,
     run_scope_project_plan,
 )
@@ -196,6 +199,178 @@ def test_given_no_changed_models_when_planning_then_plan_is_a_no_op(
     assert payload["selection_mode"] == "changed"
     assert tuple(payload["execution_scope"]) == test_case.expected_execution_scope
     assert payload["entries"] == []
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="a declared setting absent from the deployed source selects its reader",
+            declared_settings=(("kafka_max_block_size", "500"),),
+            catalog_setting_overrides=(),
+            omitted_catalog_settings=("kafka_max_block_size",),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_drifted_settings=("kafka_max_block_size",),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="a changed topic selects its reader like an explicit pipeline selection",
+            declared_settings=(),
+            catalog_setting_overrides=(("kafka_topic_list", "source.orders.previous"),),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_drifted_settings=("kafka_topic_list",),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drifted_managed_source_when_planning_changed_then_owner_plan_matches_selection(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+    )
+
+    changed_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    changed_payload: dict = json.loads(capsys.readouterr().out)
+    explicit_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        selectors=(test_case.owner_selector,),
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    explicit_payload: dict = json.loads(capsys.readouterr().out)
+
+    assert (changed_exit_code, explicit_exit_code) == (0, 0)
+    assert changed_payload["selection_mode"] == "changed"
+    assert tuple(key["name"] for key in changed_payload["execution_scope"]) == (
+        test_case.expected_execution_scope
+    )
+    assert tuple(
+        recreation["relation_name"] for recreation in changed_payload["source_recreations"]
+    ) == (test_case.expected_recreated_relation_names)
+    assert [
+        recreation["drifted_settings"] for recreation in changed_payload["source_recreations"]
+    ] == [list(test_case.expected_drifted_settings)]
+    assert {
+        field: changed_payload[field]
+        for field in ("execution_scope", "teardown", "creation", "replay_roots")
+    } == {
+        field: explicit_payload[field]
+        for field in ("execution_scope", "teardown", "creation", "replay_roots")
+    }
+    assert changed_payload["source_recreations"] == explicit_payload["source_recreations"]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="a deployed source matching its declaration selects nothing",
+            declared_settings=(("kafka_max_block_size", "500"),),
+            catalog_setting_overrides=(),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="a masked deployed setting selects nothing",
+            declared_settings=(),
+            catalog_setting_overrides=(("kafka_broker_list", "[HIDDEN]"),),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_undrifted_managed_source_when_planning_changed_then_nothing_is_selected(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+    )
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+
+    payload: dict = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert tuple(payload["execution_scope"]) == test_case.expected_execution_scope
+    assert payload["source_recreations"] == []
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="settings drift under another consumer group blocks like a selection",
+            declared_settings=(),
+            catalog_setting_overrides=(
+                ("kafka_topic_list", "source.orders.previous"),
+                ("kafka_group_name", "streambuild_orders_previous"),
+            ),
+            expected_error_fragment=(
+                "kafka__orders consumes as consumer group 'streambuild_orders_previous'"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_blocking_source_drift_when_planning_changed_then_it_fails_like_a_selection(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+    )
+
+    changed_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    changed_error: str = capsys.readouterr().err
+    explicit_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        selectors=(test_case.owner_selector,),
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    explicit_error: str = capsys.readouterr().err
+
+    assert (changed_exit_code, explicit_exit_code) == (1, 1)
+    assert test_case.expected_error_fragment in changed_error
+    assert changed_error == explicit_error
 
 
 @pytest.mark.parametrize(

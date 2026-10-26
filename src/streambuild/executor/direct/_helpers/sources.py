@@ -115,6 +115,30 @@ def _managed_source_keys(
     )
     source_keys: set[LogicalResourceKey] = set()
     executed_pipeline_names: set[str] = set()
+    pipeline: CompiledPipeline
+    for pipeline in realized_project.project.pipelines:
+        if pipeline.source is None:
+            continue
+        if any(model.key in relevant_model_keys for model in pipeline.models):
+            source_keys.add(pipeline.source.key)
+        if any(model.key in execution_model_keys for model in pipeline.models):
+            executed_pipeline_names.add(pipeline.pipeline.name)
+    owners_by_source: dict[LogicalResourceKey, tuple[str, ...]] = _source_owner_pipelines(
+        realized_project=realized_project
+    )
+    return {
+        key: ()
+        if executed_pipeline_names.intersection(owners_by_source[key])
+        else owners_by_source[key]
+        for key in source_keys
+    }
+
+
+def _source_owner_pipelines(
+    *, realized_project: RealizedProject
+) -> dict[LogicalResourceKey, tuple[str, ...]]:
+    """Map each source to its direct readers, or to every declaring pipeline when none read it."""
+
     source_pipelines: dict[LogicalResourceKey, list[str]] = {}
     reader_pipelines: dict[LogicalResourceKey, list[str]] = {}
     pipeline: CompiledPipeline
@@ -122,23 +146,40 @@ def _managed_source_keys(
         if pipeline.source is None:
             continue
         source_pipelines.setdefault(pipeline.source.key, []).append(pipeline.pipeline.name)
-        if any(model.key in relevant_model_keys for model in pipeline.models):
-            source_keys.add(pipeline.source.key)
-        if any(model.key in execution_model_keys for model in pipeline.models):
-            executed_pipeline_names.add(pipeline.pipeline.name)
         if any(
             isinstance(model, CompiledTableModel)
             and model.transform.source == pipeline.source.key.name
             for model in pipeline.models
         ):
             reader_pipelines.setdefault(pipeline.source.key, []).append(pipeline.pipeline.name)
-    owners_by_source: dict[LogicalResourceKey, tuple[str, ...]] = {
-        key: tuple(reader_pipelines.get(key, source_pipelines[key])) for key in source_keys
-    }
     return {
-        key: () if executed_pipeline_names.intersection(owners) else owners
-        for key, owners in owners_by_source.items()
+        key: tuple(reader_pipelines.get(key, pipeline_names))
+        for key, pipeline_names in source_pipelines.items()
     }
+
+
+def drifted_managed_source_owners(
+    *, realized_project: RealizedProject, catalog: CatalogSnapshot
+) -> tuple[str, ...]:
+    """Name the pipelines whose rebuild recreates a deployed source whose settings drifted."""
+
+    owners_by_source: dict[LogicalResourceKey, tuple[str, ...]] = _source_owner_pipelines(
+        realized_project=realized_project
+    )
+    owner_names: set[str] = set()
+    key: LogicalResourceKey
+    owners: tuple[str, ...]
+    for key, owners in owners_by_source.items():
+        resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
+        for resource in _managed_source_resources(
+            realized_project=realized_project, source_keys=frozenset((key,))
+        ):
+            if not isinstance(resource, AdapterManagedSource):
+                continue
+            relation: CatalogRelation | None = catalog.relation(resource.name)
+            if relation is not None and _managed_source_drift(resource=resource, relation=relation):
+                owner_names.update(owners)
+    return tuple(sorted(owner_names))
 
 
 def _unselected_source_hints(

@@ -355,6 +355,8 @@ class PlanSourceRecreationTestCase:
     preparation_builder: Callable[[], DirectWorkflowPreparation]
     expected_warning_code: str
     expected_message_fragments: tuple[str, ...]
+    expected_source_recreation: dict[str, object]
+    expected_actions: tuple[tuple[str, str, str, str], ...]
 
 
 @dataclass(frozen=True)

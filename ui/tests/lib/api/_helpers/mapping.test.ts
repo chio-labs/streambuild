@@ -45,6 +45,42 @@ describe('plan mapping', () => {
 		expect(plan.phases[0]?.actions[0]?.logicalName).toBe('orders');
 		expect(plan.warnings[0]?.relatedModel).toBe('orders');
 		expect(plan.upperBoundary.continuesLive).toBe(true);
+		expect(plan.sourceRecreations).toEqual([]);
+	});
+
+	it('given a recreated source when mapped then its relations and settings stay intact', () => {
+		const plan: Plan = planFromServer(
+			{
+				mode: 'direct',
+				database: 'analytics',
+				sourceRecreations: [
+					{
+						sourceName: 'orders',
+						relationName: 'kafka__orders',
+						landingViewName: 'mv__orders',
+						landingRelationName: 'raw__orders',
+						stagedRelationName: '_streambuild_next__kafka__orders',
+						consumerGroup: 'streambuild_orders_analytics',
+						driftedSettings: ['kafka_topic_list'],
+						message: 'kafka__orders and mv__orders are recreated.'
+					}
+				]
+			},
+			'clickhouse'
+		);
+
+		expect(plan.sourceRecreations).toEqual([
+			{
+				sourceName: 'orders',
+				relationName: 'kafka__orders',
+				landingViewName: 'mv__orders',
+				landingRelationName: 'raw__orders',
+				stagedRelationName: '_streambuild_next__kafka__orders',
+				consumerGroup: 'streambuild_orders_analytics',
+				driftedSettings: ['kafka_topic_list'],
+				message: 'kafka__orders and mv__orders are recreated.'
+			}
+		]);
 	});
 });
 

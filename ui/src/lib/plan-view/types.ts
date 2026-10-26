@@ -47,6 +47,8 @@ export type PlanSummary = {
 	readonly downstreamCount: number;
 	readonly missingUpstreamCount: number;
 	readonly riskyOwnership: Plan['entries'][number]['ownership'];
+	readonly sourceRecreations: Plan['sourceRecreations'];
+	readonly plannerWarnings: Plan['warnings'];
 };
 
 export type PlanViewTypes = {

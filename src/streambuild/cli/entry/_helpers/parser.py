@@ -648,7 +648,10 @@ def _add_changed_selection_args(*, parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--changed",
         action="store_true",
-        help="Select direct models changed since their last applied build",
+        help=(
+            "Select direct models changed since their last applied build, plus the models "
+            "of pipelines reading a managed Kafka source whose deployed settings drifted"
+        ),
     )
     parser.add_argument(
         "--include-missing-upstream",

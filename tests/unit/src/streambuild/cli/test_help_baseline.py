@@ -43,12 +43,12 @@ from tests.unit.src.streambuild.cli._test_types import CliHelpBaselineTestCase
         CliHelpBaselineTestCase(
             description="captures plan help",
             argv=("plan", "--help"),
-            expected_sha256="b208d4d6f066bbe81fedbf3b34579bd4abcb938142b333911e6a645d2bb84279",
+            expected_sha256="34ad89f750ffa4c436f5597caa5b31203be445f4a40dfcba029d4bb53aff2272",
         ),
         CliHelpBaselineTestCase(
             description="captures build help",
             argv=("build", "--help"),
-            expected_sha256="7dd8a7aba28df1a57bf32a2d66338bfc78b5bd92a7d8a4f2922b9c0cb7c15bc9",
+            expected_sha256="083e7071434944d86094009266f446b8f3cb5cb37e38df2c661ca65f5af8cc89",
         ),
         CliHelpBaselineTestCase(
             description="captures destroy help",

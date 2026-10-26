@@ -253,6 +253,17 @@ class CliDirectSourceRecreationIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectChangedSourceRecreationIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_settings: tuple[tuple[str, str], ...]
+    expected_execution_scope: tuple[str, ...]
+    expected_drifted_settings: tuple[str, ...]
+    expected_kafka_ddl_fragments: tuple[str, ...]
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliDirectSourceRejectionIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
