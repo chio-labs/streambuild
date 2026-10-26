@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.10](https://github.com/chio-labs/streambuild/compare/v0.41.9...v0.41.10) (2026-10-26)
+
+
+### Bug Fixes
+
+* **plan:** rebuild one owner per drifted source and colour SQL diffs ([#261](https://github.com/chio-labs/streambuild/issues/261)) ([d245544](https://github.com/chio-labs/streambuild/commit/d2455448e6f25e06af221b6be1b5426db632f448))
+
 ## [0.41.9](https://github.com/chio-labs/streambuild/compare/v0.41.8...v0.41.9) (2026-10-26)
 
 
