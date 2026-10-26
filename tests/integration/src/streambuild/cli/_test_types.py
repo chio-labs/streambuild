@@ -253,6 +253,15 @@ class CliDirectSourceRecreationIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliDirectSourceRejectionIntegrationTestCase:
+    description: str
+    landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_settings: tuple[tuple[str, str], ...]
+    expected_error_fragment: str
+    expected_order_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CliCrossModeBuildIntegrationTestCase:
     description: str
     expected_exit_code: int

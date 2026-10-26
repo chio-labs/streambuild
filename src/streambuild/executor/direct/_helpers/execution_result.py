@@ -152,7 +152,7 @@ def _created_source_names(
         name
         for name in source_names
         if f"prepare_source_{_step_segment(name)}" in results_by_step_id
-        or f"recreate_source_{_step_segment(name)}" in results_by_step_id
+        or f"swap_source_{_step_segment(name)}" in results_by_step_id
         or f"activate_source_{_step_segment(name)}" in results_by_step_id
     )
 

@@ -26,17 +26,17 @@ from streambuild.executor.population.models import (
     PopulationSourcePreparation,
     PopulationSourceRecreation,
 )
-from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
-from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
 from tests.unit.src.streambuild.executor.direct.main._test_types import (
+    DirectPrerequisiteSourceTestCase,
     DirectSourceDriftBlockTestCase,
+    DirectSourceInterruptionTestCase,
     DirectSourcePreservationTestCase,
     DirectSourceRecoveryTestCase,
     DirectSourceRecreationTestCase,
 )
 from tests.unit.src.streambuild.executor.direct.main.helpers import (
-    FailingPausedSourceConnection,
     RecordingDirectBuildConnection,
+    RejectingStagedSourceConnection,
     build_managed_source_execution_request,
     build_managed_source_snapshot,
 )
@@ -49,9 +49,18 @@ _FRESH_SOURCE_STEP_IDS: tuple[str, ...] = (
 )
 _RECREATION_STEP_IDS: tuple[str, ...] = (
     "pause_source_mv__orders",
-    "drop_source_kafka__orders",
-    "recreate_source_kafka__orders",
+    "clear_staged_source_kafka__orders",
+    "stage_source_kafka__orders",
+    "swap_source_kafka__orders",
+    "retire_source_kafka__orders",
     "activate_source_mv__orders",
+)
+_RECOVERY_STEP_IDS: tuple[str, ...] = (
+    "recover_staged_source_kafka__orders",
+    "recover_source_mv__orders",
+)
+_STAGED_SOURCE_DROP_SQL: str = (
+    "DROP TABLE IF EXISTS analytics._streambuild_next__kafka__orders SYNC;"
 )
 
 
@@ -65,12 +74,9 @@ _RECREATION_STEP_IDS: tuple[str, ...] = (
             omitted_catalog_settings=("kafka_max_block_size",),
             expected_drifted_settings=("kafka_max_block_size",),
             expected_source_step_ids=_RECREATION_STEP_IDS,
-            expected_recovery_step_ids=(
-                "recover_source_kafka__orders",
-                "recover_source_mv__orders",
-            ),
+            expected_recovery_step_ids=_RECOVERY_STEP_IDS,
             expected_recreate_sql_fragments=(
-                "CREATE TABLE analytics.kafka__orders",
+                "CREATE TABLE analytics._streambuild_next__kafka__orders",
                 "kafka_topic_list = 'source.orders'",
                 "kafka_group_name = 'streambuild_direct_scope_test_orders_analytics'",
                 "kafka_max_block_size = '500'",
@@ -83,10 +89,7 @@ _RECREATION_STEP_IDS: tuple[str, ...] = (
             omitted_catalog_settings=(),
             expected_drifted_settings=("kafka_topic_list",),
             expected_source_step_ids=_RECREATION_STEP_IDS,
-            expected_recovery_step_ids=(
-                "recover_source_kafka__orders",
-                "recover_source_mv__orders",
-            ),
+            expected_recovery_step_ids=_RECOVERY_STEP_IDS,
             expected_recreate_sql_fragments=(
                 "kafka_topic_list = 'source.orders'",
                 "kafka_group_name = 'streambuild_direct_scope_test_orders_analytics'",
@@ -102,10 +105,7 @@ _RECREATION_STEP_IDS: tuple[str, ...] = (
             omitted_catalog_settings=(),
             expected_drifted_settings=("kafka_broker_list", "kafka_num_consumers"),
             expected_source_step_ids=_RECREATION_STEP_IDS,
-            expected_recovery_step_ids=(
-                "recover_source_kafka__orders",
-                "recover_source_mv__orders",
-            ),
+            expected_recovery_step_ids=_RECOVERY_STEP_IDS,
             expected_recreate_sql_fragments=(
                 "kafka_broker_list = 'kafka:9092'",
                 "kafka_num_consumers = '2'",
@@ -166,7 +166,7 @@ def test_given_settings_only_source_drift_when_planning_then_source_is_recreated
     sql_by_step_id: dict[str, str] = {
         statement.step_id: statement.sql for statement in workflow.statements
     }
-    recreate_sql: str = sql_by_step_id["recreate_source_kafka__orders"]
+    recreate_sql: str = sql_by_step_id["stage_source_kafka__orders"]
     source_step_positions: tuple[int, ...] = tuple(
         step_ids.index(step_id) for step_id in test_case.expected_source_step_ids
     )
@@ -183,7 +183,13 @@ def test_given_settings_only_source_drift_when_planning_then_source_is_recreated
     assert client_factory.clients == []
     assert source_step_positions == tuple(sorted(source_step_positions))
     assert set(step_ids).isdisjoint(_FRESH_SOURCE_STEP_IDS)
-    assert step_ids.index("recreate_source_kafka__orders") < step_ids.index("replay_alpha")
+    assert step_ids.index("retire_source_kafka__orders") < step_ids.index("replay_alpha")
+    assert sql_by_step_id["clear_staged_source_kafka__orders"] == _STAGED_SOURCE_DROP_SQL
+    assert sql_by_step_id["swap_source_kafka__orders"] == (
+        "EXCHANGE TABLES analytics.kafka__orders AND analytics._streambuild_next__kafka__orders;"
+    )
+    assert sql_by_step_id["retire_source_kafka__orders"] == _STAGED_SOURCE_DROP_SQL
+    assert "DROP TABLE IF EXISTS analytics.kafka__orders" not in sql_by_step_id.values()
     assert all(fragment in recreate_sql for fragment in test_case.expected_recreate_sql_fragments)
     assert "IF NOT EXISTS" not in recreate_sql
     assert tuple(statement.step_id for statement in workflow.source_recovery_statements) == (
@@ -306,57 +312,193 @@ def test_given_unrecoverable_source_drift_when_planning_then_build_is_blocked(
     "test_case",
     [
         DirectSourceRecoveryTestCase(
-            description="dropped managed source is restored when its recreation fails",
-            expected_failed_step_id="recreate_source_kafka__orders",
+            description="rejected declared settings leave the live source and restore landing",
+            expected_failed_step_id="stage_source_kafka__orders",
             expected_attempted_mutations=(
-                "DROP TABLE IF EXISTS analytics.kafka__orders SYNC;",
-                "SELECT invalid;",
-                "CREATE TABLE IF NOT EXISTS analytics.kafka__orders (message String);",
+                "DROP TABLE IF EXISTS analytics.mv__orders SYNC;",
+                _STAGED_SOURCE_DROP_SQL,
+                "CREATE TABLE analytics._streambuild_next__kafka__orders",
+                _STAGED_SOURCE_DROP_SQL,
+                "CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.mv__orders",
             ),
         )
     ],
     ids=lambda case: case.description,
 )
-def test_given_failed_source_recreation_when_executing_then_source_is_recovered(
+def test_given_rejected_source_settings_when_executing_then_live_source_is_untouched(
     test_case: DirectSourceRecoveryTestCase,
+    tmp_path: Path,
 ) -> None:
-    workflow: DirectBuildWorkflow = DirectBuildWorkflow(
-        template=BuildWorkflow(
-            mode=WorkflowMode.DIRECT,
-            plan_json="{}",
-            statements=(
-                WarehouseStatement(
-                    sequence=1,
-                    step_id="drop_source_kafka__orders",
-                    phase=WorkflowPhase.PREPARATION,
-                    intent=StatementIntent.MUTATION,
-                    sql="DROP TABLE IF EXISTS analytics.kafka__orders SYNC;",
-                ),
-                WarehouseStatement(
-                    sequence=2,
-                    step_id="recreate_source_kafka__orders",
-                    phase=WorkflowPhase.PREPARATION,
-                    intent=StatementIntent.MUTATION,
-                    sql="SELECT invalid;",
-                ),
-            ),
-        ),
-        runtime_replays=(),
-        workflow_id="workflow-1",
-        source_recovery_statements=(
-            WarehouseStatement(
-                sequence=1,
-                step_id="recover_source_kafka__orders",
-                phase=WorkflowPhase.FINALIZATION,
-                intent=StatementIntent.MUTATION,
-                sql="CREATE TABLE IF NOT EXISTS analytics.kafka__orders (message String);",
-            ),
-        ),
+    request: DirectBuildRequest = build_managed_source_execution_request(
+        project_root=tmp_path,
+        declared_settings=(("kafka_unknown_setting", "1"),),
     )
-    connection: FailingPausedSourceConnection = FailingPausedSourceConnection()
+    snapshot: DirectWarehouseSnapshot = build_managed_source_snapshot(
+        request=request,
+        catalog_setting_overrides=(),
+        omitted_catalog_settings=("kafka_unknown_setting",),
+    )
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=RecordingDirectBuildConnection(),
+        snapshot=snapshot,
+        plan_json="{}",
+    )
+    connection: RejectingStagedSourceConnection = RejectingStagedSourceConnection()
 
     with pytest.raises(DirectWorkflowExecutionError) as raised:
         execute_direct_build_workflow(workflow=workflow, connection=connection)
 
-    assert tuple(connection.attempted_mutations) == test_case.expected_attempted_mutations
+    mutations: tuple[str, ...] = tuple(connection.attempted_mutations[1:])
     assert raised.value.failed_step_id == test_case.expected_failed_step_id
+    assert len(mutations) == len(test_case.expected_attempted_mutations)
+    assert all(
+        mutation.startswith(expected)
+        for mutation, expected in zip(
+            mutations, test_case.expected_attempted_mutations, strict=True
+        )
+    )
+    assert not any(
+        mutation.startswith(("DROP TABLE IF EXISTS analytics.kafka__orders", "EXCHANGE TABLES"))
+        for mutation in mutations
+    )
+    assert tuple(statement.step_id for statement in raised.value.workflow.statements[-2:]) == (
+        _RECOVERY_STEP_IDS
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectSourceInterruptionTestCase(
+            description="failed exchange keeps the live source and restores landing on it",
+            rejected_prefix="EXCHANGE TABLES analytics.kafka__orders",
+            expected_failed_step_id="swap_source_kafka__orders",
+        ),
+        DirectSourceInterruptionTestCase(
+            description="failure after the exchange retires leftovers and restores landing",
+            rejected_prefix="DROP TABLE IF EXISTS analytics.mv__alpha",
+            expected_failed_step_id="drop_mv__alpha",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_interrupted_source_recreation_when_executing_then_landing_is_restored(
+    test_case: DirectSourceInterruptionTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_managed_source_execution_request(
+        project_root=tmp_path,
+        declared_settings=(),
+    )
+    snapshot: DirectWarehouseSnapshot = build_managed_source_snapshot(
+        request=request,
+        catalog_setting_overrides=(("kafka_topic_list", "source.orders.previous"),),
+    )
+    workflow: DirectBuildWorkflow = assemble_direct_build_workflow(
+        request=request,
+        client=RecordingDirectBuildConnection(),
+        snapshot=snapshot,
+        plan_json="{}",
+    )
+    connection: RejectingStagedSourceConnection = RejectingStagedSourceConnection(
+        rejected_prefix=test_case.rejected_prefix
+    )
+
+    with pytest.raises(DirectWorkflowExecutionError) as raised:
+        execute_direct_build_workflow(workflow=workflow, connection=connection)
+
+    assert raised.value.failed_step_id == test_case.expected_failed_step_id
+    assert connection.attempted_mutations[-2] == _STAGED_SOURCE_DROP_SQL
+    assert connection.attempted_mutations[-1].startswith(
+        "CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.mv__orders"
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectPrerequisiteSourceTestCase(
+            description="settings drift of a prerequisite-only pipeline's source blocks",
+            selected_model_names=("order_summary",),
+            expected_error_fragments=(
+                "kafka__orders settings (kafka_topic_list) differ from the project declaration",
+                "source 'orders' is read directly only by pipeline 'pl__orders', which this "
+                "build does not rebuild",
+                "include pipeline:pl__orders in the selection",
+            ),
+            expected_recreated_relation_names=(),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_prerequisite_only_source_drift_when_planning_then_build_is_blocked(
+    test_case: DirectPrerequisiteSourceTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_managed_source_execution_request(
+        project_root=tmp_path,
+        declared_settings=(),
+        selected_model_names=test_case.selected_model_names,
+    )
+    snapshot: DirectWarehouseSnapshot = build_managed_source_snapshot(
+        request=request,
+        catalog_setting_overrides=(("kafka_topic_list", "source.orders.previous"),),
+    )
+
+    with pytest.raises(DirectBuildError) as raised:
+        plan_preserved_managed_sources(
+            plan=request.plan,
+            realized_project=request.realized_project,
+            catalog=snapshot.catalog,
+            database=request.database,
+        )
+
+    message: str = str(raised.value)
+    assert all(fragment in message for fragment in test_case.expected_error_fragments)
+    assert "Recreate the source explicitly" not in message
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DirectPrerequisiteSourceTestCase(
+            description="source of an executed pipeline is recreated alongside a downstream one",
+            selected_model_names=("alpha", "order_summary"),
+            expected_error_fragments=(),
+            expected_recreated_relation_names=("kafka__orders",),
+        ),
+        DirectPrerequisiteSourceTestCase(
+            description="source is recreated when its pipeline rebuilds only downstream models",
+            selected_model_names=("beta",),
+            expected_error_fragments=(),
+            expected_recreated_relation_names=("kafka__orders",),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_executed_pipeline_source_drift_when_planning_then_source_is_recreated(
+    test_case: DirectPrerequisiteSourceTestCase,
+    tmp_path: Path,
+) -> None:
+    request: DirectBuildRequest = build_managed_source_execution_request(
+        project_root=tmp_path,
+        declared_settings=(),
+        selected_model_names=test_case.selected_model_names,
+    )
+    snapshot: DirectWarehouseSnapshot = build_managed_source_snapshot(
+        request=request,
+        catalog_setting_overrides=(("kafka_topic_list", "source.orders.previous"),),
+    )
+
+    preparation: PopulationSourcePreparation
+    preparation, _realizations = plan_preserved_managed_sources(
+        plan=request.plan,
+        realized_project=request.realized_project,
+        catalog=snapshot.catalog,
+        database=request.database,
+    )
+
+    assert tuple(
+        recreation.managed_source.resource.name for recreation in preparation.recreated_sources
+    ) == (test_case.expected_recreated_relation_names)

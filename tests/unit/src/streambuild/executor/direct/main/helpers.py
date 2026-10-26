@@ -51,6 +51,30 @@ class RecordingDirectBuildConnection(RecordingAdapterConnection):
         return render_clickhouse_metadata_migration_workflow(database)
 
 
+class RejectingStagedSourceConnection(RecordingDirectBuildConnection):
+    """Reject one statement the way the warehouse rejects an unknown Kafka setting."""
+
+    def __init__(
+        self,
+        *,
+        rejected_prefix: str = "CREATE TABLE analytics._streambuild_next__kafka__orders",
+    ) -> None:
+        super().__init__()
+        self.attempted_mutations: list[str] = []
+        self._rejected_prefix = rejected_prefix
+
+    def execute_workflow_sql(self, statement: str) -> AdapterMutationResult:
+        self.attempted_mutations.append(statement)
+        return {
+            True: self._reject_mutation,
+            False: super().execute_workflow_sql,
+        }[statement.startswith(self._rejected_prefix)](statement)
+
+    def _reject_mutation(self, statement: str) -> AdapterMutationResult:
+        del statement
+        raise AdapterWarehouseError("Unknown setting 'kafka_unknown_setting': for storage Kafka")
+
+
 class FailingPausedSourceConnection(RecordingDirectBuildConnection):
     def __init__(self) -> None:
         super().__init__()
@@ -255,9 +279,20 @@ def _direct_prerequisite_snapshot() -> DirectWarehouseSnapshot:
 
 
 def build_managed_source_execution_request(
-    *, project_root: Path, declared_settings: tuple[tuple[str, str], ...]
+    *,
+    project_root: Path,
+    declared_settings: tuple[tuple[str, str], ...],
+    selected_model_names: tuple[str, ...] = ("alpha",),
 ) -> DirectBuildRequest:
+    """Plan the scope project plus a downstream pipeline that only reads ``alpha``."""
+
     write_direct_scope_project(project_root=project_root)
+    summary_root: Path = project_root / "pipelines" / "pl__order_summary"
+    summary_root.mkdir(parents=True)
+    (summary_root / "order_summary.sql").write_text(
+        'MODEL (order_by ["order_id"]);\nSELECT order_id::UInt64 AS order_id FROM __ref("alpha")\n',
+        encoding="utf-8",
+    )
     source_path: Path = project_root / "sources" / "orders.yml"
     settings_yml: str = "".join(
         f"      {setting_name}: '{setting_value}'\n"
@@ -270,7 +305,7 @@ def build_managed_source_execution_request(
     )
     return _analyze_direct_execution_request(
         project_root=project_root,
-        selected_model_names=("alpha",),
+        selected_model_names=selected_model_names,
     )
 
 

@@ -92,3 +92,18 @@ class DirectSourceDriftBlockTestCase:
     extra_landing_columns: tuple[tuple[str, str], ...]
     expected_error_fragments: tuple[str, ...]
     unexpected_error_fragments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectPrerequisiteSourceTestCase:
+    description: str
+    selected_model_names: tuple[str, ...]
+    expected_error_fragments: tuple[str, ...]
+    expected_recreated_relation_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DirectSourceInterruptionTestCase:
+    description: str
+    rejected_prefix: str
+    expected_failed_step_id: str

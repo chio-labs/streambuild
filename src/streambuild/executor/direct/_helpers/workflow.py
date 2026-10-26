@@ -60,6 +60,8 @@ from streambuild.executor.population.models import (
 from streambuild.executor.workflow.models import BuildWorkflow, WarehouseStatement
 from streambuild.executor.workflow.types import StatementIntent, WorkflowMode, WorkflowPhase
 
+_STAGED_SOURCE_NAME_PREFIX: str = "_streambuild_next__"
+
 
 def assemble_direct_build_workflow(
     *,
@@ -137,16 +139,10 @@ def assemble_direct_build_workflow(
     source_recovery_statements: tuple[WarehouseStatement, ...] = _source_recovery_statements(
         statements=statements,
         landing_view_names=tuple(landing_view.name for landing_view in paused_landing_views),
-        recreated_source_sql=tuple(
+        staged_source_drop_sql=tuple(
             (
                 recreation.managed_source.resource.name,
-                _terminate_sql(
-                    client.render_resource(
-                        resource=recreation.managed_source.resource,
-                        database=recreation.managed_source.database,
-                        if_not_exists=True,
-                    )
-                ),
+                _drop_staged_source_sql(recreation=recreation),
             )
             for recreation in source_preparation.recreated_sources
         ),
@@ -155,7 +151,7 @@ def assemble_direct_build_workflow(
     recreated_sources: tuple[PopulationSourceRecreation, ...] = tuple(
         recreation
         for recreation in source_preparation.recreated_sources
-        if f"recreate_source_{_step_segment(recreation.managed_source.resource.name)}" in step_ids
+        if f"swap_source_{_step_segment(recreation.managed_source.resource.name)}" in step_ids
     )
     return DirectBuildWorkflow(
         template=BuildWorkflow(
@@ -352,7 +348,7 @@ def _source_recreation_rendered(
     source_preparation: PopulationSourcePreparation,
     early_paused_landing_view_names: tuple[str, ...],
 ) -> tuple[tuple[str, str], ...]:
-    """Detach landing before replacing each drifted Kafka source; the landing table is kept."""
+    """Detach landing, then swap in a pre-validated declared Kafka source; landing is kept."""
 
     rendered: list[tuple[str, str]] = []
     recreation: PopulationSourceRecreation
@@ -363,19 +359,43 @@ def _source_recreation_rendered(
             )
         source: PopulationManagedSource = recreation.managed_source
         segment: str = _step_segment(source.resource.name)
-        rendered.append(
+        staged_name: str = _staged_source_name(recreation=recreation)
+        rendered.extend(
             (
-                f"drop_source_{segment}",
-                f"DROP TABLE IF EXISTS {source.database}.{source.resource.name} SYNC",
-            )
-        )
-        rendered.append(
-            (
-                f"recreate_source_{segment}",
-                client.render_resource(resource=source.resource, database=source.database),
+                (
+                    f"clear_staged_source_{segment}",
+                    _drop_staged_source_sql(recreation=recreation),
+                ),
+                (
+                    f"stage_source_{segment}",
+                    client.render_resource(
+                        resource=replace(source.resource, name=staged_name),
+                        database=source.database,
+                    ),
+                ),
+                (
+                    f"swap_source_{segment}",
+                    f"EXCHANGE TABLES {source.database}.{source.resource.name} AND "
+                    f"{source.database}.{staged_name}",
+                ),
+                (
+                    f"retire_source_{segment}",
+                    _drop_staged_source_sql(recreation=recreation),
+                ),
             )
         )
     return tuple(rendered)
+
+
+def _staged_source_name(*, recreation: PopulationSourceRecreation) -> str:
+    return f"{_STAGED_SOURCE_NAME_PREFIX}{recreation.managed_source.resource.name}"
+
+
+def _drop_staged_source_sql(*, recreation: PopulationSourceRecreation) -> str:
+    return _terminate_sql(
+        f"DROP TABLE IF EXISTS {recreation.managed_source.database}."
+        f"{_staged_source_name(recreation=recreation)} SYNC"
+    )
 
 
 def _teardown_statements(
@@ -473,25 +493,25 @@ def _source_recovery_statements(
     *,
     statements: tuple[WarehouseStatement, ...],
     landing_view_names: tuple[str, ...],
-    recreated_source_sql: tuple[tuple[str, str], ...],
+    staged_source_drop_sql: tuple[tuple[str, str], ...],
 ) -> tuple[WarehouseStatement, ...]:
     if not statements:
         return ()
     activation_by_step_id: dict[str, WarehouseStatement] = {
         statement.step_id: statement for statement in statements
     }
-    source_recovery: tuple[WarehouseStatement, ...] = tuple(
+    staged_recovery: tuple[WarehouseStatement, ...] = tuple(
         WarehouseStatement(
             sequence=index,
-            step_id=f"recover_source_{_step_segment(source_name)}",
+            step_id=f"recover_staged_source_{_step_segment(source_name)}",
             phase=WorkflowPhase.FINALIZATION,
             intent=StatementIntent.MUTATION,
             sql=sql,
         )
-        for index, (source_name, sql) in enumerate(recreated_source_sql, start=1)
+        for index, (source_name, sql) in enumerate(staged_source_drop_sql, start=1)
     )
     return (
-        *source_recovery,
+        *staged_recovery,
         *(
             replace(
                 activation_by_step_id[f"activate_source_{_step_segment(landing_view_name)}"],
@@ -500,7 +520,7 @@ def _source_recovery_statements(
                 phase=WorkflowPhase.FINALIZATION,
             )
             for index, landing_view_name in enumerate(
-                landing_view_names, start=len(source_recovery) + 1
+                landing_view_names, start=len(staged_recovery) + 1
             )
         ),
     )

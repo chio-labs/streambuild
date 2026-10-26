@@ -32,7 +32,7 @@ from streambuild.executor.workflow.models import (
 from streambuild.executor.workflow.types import WorkflowEventEmitter
 
 _EMPTY_TEXT: str = ""
-_PAUSED_SOURCE_STEP_PREFIXES: tuple[str, ...] = ("pause_source_", "drop_source_")
+_PAUSED_SOURCE_STEP_PREFIXES: tuple[str, ...] = ("pause_source_", "clear_staged_source_")
 
 
 def execute_direct_build_workflow(

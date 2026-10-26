@@ -15,6 +15,7 @@ from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import 
 from streambuild.compiler.compile.models import (
     CompiledPipeline,
     CompiledSource,
+    CompiledTableModel,
     DesiredMaterializedView,
     LogicalResourceKey,
 )
@@ -44,19 +45,23 @@ def plan_preserved_managed_sources(
 ) -> tuple[PopulationSourcePreparation, tuple[PopulationRealization, ...]]:
     """Validate preserved sources and plan absent or recreated resources without mutation."""
 
+    reader_pipelines_by_source: dict[LogicalResourceKey, tuple[str, ...]] = _managed_source_keys(
+        plan=plan, realized_project=realized_project
+    )
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...] = (
         _managed_source_resources(
             realized_project=realized_project,
-            source_keys=_managed_source_keys(
-                plan=plan,
-                realized_project=realized_project,
-            ),
+            source_keys=frozenset(reader_pipelines_by_source),
         )
     )
     recreated_sources: tuple[PopulationSourceRecreation, ...] = _plan_source_recreations(
         resources=resources,
         catalog=catalog,
         database=database,
+        prerequisite_hints=_unselected_source_hints(
+            realized_project=realized_project,
+            reader_pipelines_by_source=reader_pipelines_by_source,
+        ),
     )
     recreated_names: frozenset[str] = frozenset(
         recreation.managed_source.resource.name for recreation in recreated_sources
@@ -101,18 +106,67 @@ def plan_preserved_managed_sources(
 
 def _managed_source_keys(
     *, plan: DirectPlan, realized_project: RealizedProject
-) -> frozenset[LogicalResourceKey]:
+) -> dict[LogicalResourceKey, tuple[str, ...]]:
+    """Map each relevant source to the owning pipelines a build must select to recreate it."""
+
+    execution_model_keys: frozenset[LogicalResourceKey] = frozenset(plan.execution_scope)
     relevant_model_keys: frozenset[LogicalResourceKey] = frozenset(
         (*plan.execution_scope, *(item.key for item in plan.prerequisite_scope))
     )
     source_keys: set[LogicalResourceKey] = set()
+    executed_pipeline_names: set[str] = set()
+    source_pipelines: dict[LogicalResourceKey, list[str]] = {}
+    reader_pipelines: dict[LogicalResourceKey, list[str]] = {}
     pipeline: CompiledPipeline
     for pipeline in realized_project.project.pipelines:
         if pipeline.source is None:
             continue
+        source_pipelines.setdefault(pipeline.source.key, []).append(pipeline.pipeline.name)
         if any(model.key in relevant_model_keys for model in pipeline.models):
             source_keys.add(pipeline.source.key)
-    return frozenset(source_keys)
+        if any(model.key in execution_model_keys for model in pipeline.models):
+            executed_pipeline_names.add(pipeline.pipeline.name)
+        if any(
+            isinstance(model, CompiledTableModel)
+            and model.transform.source == pipeline.source.key.name
+            for model in pipeline.models
+        ):
+            reader_pipelines.setdefault(pipeline.source.key, []).append(pipeline.pipeline.name)
+    owners_by_source: dict[LogicalResourceKey, tuple[str, ...]] = {
+        key: tuple(reader_pipelines.get(key, source_pipelines[key])) for key in source_keys
+    }
+    return {
+        key: () if executed_pipeline_names.intersection(owners) else owners
+        for key, owners in owners_by_source.items()
+    }
+
+
+def _unselected_source_hints(
+    *,
+    realized_project: RealizedProject,
+    reader_pipelines_by_source: dict[LogicalResourceKey, tuple[str, ...]],
+) -> dict[str, str]:
+    """Explain, per Kafka relation, how to select a build that may recreate the source."""
+
+    hints: dict[str, str] = {}
+    key: LogicalResourceKey
+    pipeline_names: tuple[str, ...]
+    for key, pipeline_names in reader_pipelines_by_source.items():
+        if not pipeline_names:
+            continue
+        selectors: str = ", ".join(f"pipeline:{name}" for name in pipeline_names)
+        hint: str = (
+            f"source '{key.name}' is read directly only by pipeline "
+            f"{', '.join(repr(name) for name in pipeline_names)}, which this build does not "
+            f"rebuild; include {selectors} in the selection to recreate it with the declared "
+            "settings"
+        )
+        hints.update(
+            (resource.name, hint)
+            for resource in realized_project.resources_by_logical_key[key]
+            if isinstance(resource, AdapterManagedSource)
+        )
+    return hints
 
 
 def _managed_source_resources(
@@ -137,8 +191,10 @@ def _plan_source_recreations(
     resources: tuple[AdapterManagedSource | AdapterTable | AdapterMaterializedView, ...],
     catalog: CatalogSnapshot,
     database: str,
+    prerequisite_hints: dict[str, str],
 ) -> tuple[PopulationSourceRecreation, ...]:
     blocking_drift: list[str] = []
+    prerequisite_drift: list[str] = []
     recreations: list[PopulationSourceRecreation] = []
     resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
     for resource in resources:
@@ -150,6 +206,12 @@ def _plan_source_recreations(
                 resource=resource, relation=relation
             )
             if not drifted_setting_names:
+                continue
+            if resource.name in prerequisite_hints:
+                prerequisite_drift.append(
+                    f"{relation.name} settings ({', '.join(drifted_setting_names)}) differ from "
+                    f"the project declaration, but {prerequisite_hints[resource.name]}"
+                )
                 continue
             consumer_group: str = database_scoped_consumer_group(
                 consumer_group=resource.consumer_group,
@@ -177,8 +239,13 @@ def _plan_source_recreations(
     if blocking_drift:
         raise DirectBuildError(
             "Direct build preserves managed source infrastructure and cannot continue while it "
-            f"has drifted: {'; '.join(blocking_drift)}. Recreate the source explicitly before "
-            "rebuilding."
+            f"has drifted: {'; '.join((*blocking_drift, *prerequisite_drift))}. Recreate the "
+            "source explicitly before rebuilding."
+        )
+    if prerequisite_drift:
+        raise DirectBuildError(
+            "Direct build preserves managed source infrastructure and cannot continue while it "
+            f"has drifted: {'; '.join(prerequisite_drift)}."
         )
     return tuple(recreations)
 

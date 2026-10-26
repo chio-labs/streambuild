@@ -1562,6 +1562,7 @@ def insert_landing_rows(
 
 DIRECT_BUILD_KAFKA_TABLE_NAME: str = "kafka__orders"
 DIRECT_BUILD_LANDING_VIEW_NAME: str = "mv__orders"
+DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME: str = "_streambuild_next__kafka__orders"
 _SECOND_PRECISION_LANDING_VIEW_SQL: str = (
     "CREATE MATERIALIZED VIEW {database}.{view_name} TO {database}.{landing_table_name} AS\n"
     "SELECT\n"
@@ -2018,7 +2019,7 @@ def deployment_watermark_count(
 def managed_source_relation_state(
     *, clickhouse_client: Client, database: str
 ) -> dict[str, tuple[str, str]]:
-    """Return each managed source relation's UUID and DDL keyed by relation name."""
+    """Return each managed source relation's UUID and DDL, including any staged source."""
 
     rows: Sequence[Sequence[object]] = clickhouse_client.query(
         "SELECT name, toString(uuid), create_table_query FROM system.tables "
@@ -2027,6 +2028,7 @@ def managed_source_relation_state(
             "database": database,
             "names": [
                 DIRECT_BUILD_KAFKA_TABLE_NAME,
+                DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME,
                 DIRECT_BUILD_LANDING_TABLE_NAME,
                 DIRECT_BUILD_LANDING_VIEW_NAME,
             ],

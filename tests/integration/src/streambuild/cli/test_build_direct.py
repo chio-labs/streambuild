@@ -42,6 +42,7 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectSelectedFailureIntegrationTestCase,
     CliDirectSelectionMatrixIntegrationTestCase,
     CliDirectSourceRecreationIntegrationTestCase,
+    CliDirectSourceRejectionIntegrationTestCase,
     CliDirectStartTimeIntegrationTestCase,
     CliDirectTimezoneStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
@@ -49,6 +50,7 @@ from tests.integration.src.streambuild.cli._test_types import (
 )
 from tests.integration.src.streambuild.cli.helpers import (
     DIRECT_BUILD_LANDING_TABLE_NAME,
+    DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME,
     AdoptedLiveInsertConnection,
     DeniedDirectMetadataConnection,
     DirectActionRecordingConnection,
@@ -1102,6 +1104,10 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
         order_ids: tuple[str, ...] = direct_build_order_ids(
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
+        replan_exit_code: int = run_direct_plan(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        replan_payload: dict[str, object] = json.loads(capsys.readouterr().out)
     finally:
         connection.close()
 
@@ -1113,7 +1119,9 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
     group_setting: str = (
         f"kafka_group_name = 'streambuild_direct_build_test_orders_{clickhouse_database}'"
     )
-    assert (first_exit_code, plan_exit_code, rebuild_exit_code) == (0, 0, 0)
+    assert (first_exit_code, plan_exit_code, rebuild_exit_code, replan_exit_code) == (0, 0, 0, 0)
+    assert replan_payload["source_recreations"] == []
+    assert DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME not in state_after
     assert [recreation["drifted_settings"] for recreation in recreations] == [
         list(test_case.expected_drifted_settings)
     ]
@@ -1126,6 +1134,71 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
     assert landing_row_count == len(test_case.landing_rows)
     assert order_ids == test_case.expected_order_ids
     assert "committed offsets" not in rebuild_error
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliDirectSourceRejectionIntegrationTestCase(
+            description="settings the warehouse rejects leave the live source and its landing",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_settings=(("kafka_unknown_setting", "1"),),
+            expected_error_fragment="UNKNOWN_SETTING",
+            expected_order_ids=("order-1", "order-2"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_rejected_source_settings_when_rebuilding_then_live_source_is_kept(
+    test_case: CliDirectSourceRejectionIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(project_root=tmp_path)
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        first_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        _ = capsys.readouterr()
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        state_before: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        write_direct_build_project(
+            project_root=tmp_path, source_settings=test_case.rebuilt_settings
+        )
+        rebuild_exit_code: int = run_direct_build(
+            project_root=tmp_path, database=clickhouse_database, connection=connection
+        )
+        rebuild_error: str = capsys.readouterr().err
+        state_after: dict[str, tuple[str, str]] = managed_source_relation_state(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        order_ids: tuple[str, ...] = direct_build_order_ids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+    finally:
+        connection.close()
+
+    assert (first_exit_code, rebuild_exit_code) == (0, 1)
+    assert test_case.expected_error_fragment in rebuild_error
+    assert state_after["kafka__orders"] == state_before["kafka__orders"]
+    assert state_after["raw__orders"] == state_before["raw__orders"]
+    assert f"TO {clickhouse_database}.raw__orders" in state_after["mv__orders"][1]
+    assert DIRECT_BUILD_STAGED_KAFKA_TABLE_NAME not in state_after
+    assert order_ids == test_case.expected_order_ids
 
 
 @pytest.mark.integration
