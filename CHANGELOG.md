@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.7](https://github.com/chio-labs/streambuild/compare/v0.41.6...v0.41.7) (2026-10-26)
+
+
+### Bug Fixes
+
+* **clickhouse:** land Kafka broker timestamps with millisecond precision ([#255](https://github.com/chio-labs/streambuild/issues/255)) ([5fcd9eb](https://github.com/chio-labs/streambuild/commit/5fcd9eb8e7677574b5eb9515fd4da32655c57308))
+
 ## [0.41.6](https://github.com/chio-labs/streambuild/compare/v0.41.5...v0.41.6) (2026-09-17)
 
 
