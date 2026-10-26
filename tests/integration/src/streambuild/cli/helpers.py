@@ -1505,6 +1505,7 @@ def run_direct_build(
     auto_approve: bool = True,
     start_time: str | None = None,
     metadata_database: str | None = None,
+    changed: bool = False,
 ) -> int:
     """Run `stb build` in direct mode against a live warehouse connection."""
 
@@ -1518,6 +1519,7 @@ def run_direct_build(
             verbose=False,
             auto_approve=auto_approve,
             start_time=start_time,
+            changed=changed,
         ),
         client=connection,
         observation_client=connection,
@@ -1545,6 +1547,98 @@ def insert_landing_rows(
         "_replay_partition, _replay_offset, _replay_timestamp, kafka_header_keys, "
         "kafka_header_values, kafka_landed_at, "
         f"_replay_landed_at) VALUES {values}"
+    )
+
+
+DIRECT_BUILD_KAFKA_TABLE_NAME: str = "kafka__orders"
+DIRECT_BUILD_LANDING_VIEW_NAME: str = "mv__orders"
+_SECOND_PRECISION_LANDING_VIEW_SQL: str = (
+    "CREATE MATERIALIZED VIEW {database}.{view_name} TO {database}.{landing_table_name} AS\n"
+    "SELECT\n"
+    "    _key AS kafka_key,\n"
+    "    message AS kafka_value,\n"
+    "    _topic AS kafka_topic,\n"
+    "    _partition AS kafka_partition,\n"
+    "    _offset AS kafka_offset,\n"
+    "    _timestamp AS kafka_timestamp,\n"
+    "    _partition AS _replay_partition,\n"
+    "    _offset AS _replay_offset,\n"
+    "    _timestamp AS _replay_timestamp,\n"
+    "    _headers.name AS kafka_header_keys,\n"
+    "    _headers.value AS kafka_header_values,\n"
+    "    now64(3) AS kafka_landed_at,\n"
+    "    now64(3) AS _replay_landed_at\n"
+    "FROM {database}.{kafka_table_name}"
+)
+
+
+def replace_landing_view_with_second_precision(*, clickhouse_client: Client, database: str) -> None:
+    """Recreate the landing view as releases before millisecond landing created it."""
+
+    clickhouse_client.command(
+        f"DROP TABLE IF EXISTS {database}.{DIRECT_BUILD_LANDING_VIEW_NAME} SYNC"
+    )
+    clickhouse_client.command(
+        _SECOND_PRECISION_LANDING_VIEW_SQL.format(
+            database=database,
+            view_name=DIRECT_BUILD_LANDING_VIEW_NAME,
+            landing_table_name=DIRECT_BUILD_LANDING_TABLE_NAME,
+            kafka_table_name=DIRECT_BUILD_KAFKA_TABLE_NAME,
+        )
+    )
+
+
+def landing_relation_uuids(*, clickhouse_client: Client, database: str) -> tuple[str, str]:
+    """Return the Kafka engine and raw landing table UUIDs, which change on recreation."""
+
+    rows: Sequence[Sequence[object]] = clickhouse_client.query(
+        "SELECT name, toString(uuid) FROM system.tables "
+        "WHERE database = {database:String} AND name IN ({names:Array(String)})",
+        parameters={
+            "database": database,
+            "names": [DIRECT_BUILD_KAFKA_TABLE_NAME, DIRECT_BUILD_LANDING_TABLE_NAME],
+        },
+    ).result_rows
+    uuid_by_name: dict[str, str] = {str(row[0]): str(row[1]) for row in rows}
+    return (
+        uuid_by_name[DIRECT_BUILD_KAFKA_TABLE_NAME],
+        uuid_by_name[DIRECT_BUILD_LANDING_TABLE_NAME],
+    )
+
+
+def landing_view_timestamp_projection(*, clickhouse_client: Client, database: str) -> str:
+    """Return the broker timestamp column the deployed landing view projects."""
+
+    return str(
+        clickhouse_client.query(
+            "SELECT extract(create_table_query, '([_a-z0-9]+) AS kafka_timestamp') "
+            "FROM system.tables WHERE database = {database:String} AND name = {name:String}",
+            parameters={"database": database, "name": DIRECT_BUILD_LANDING_VIEW_NAME},
+        ).result_rows[0][0]
+    )
+
+
+def run_direct_full_build(project_root: Path, database: str, connection: AdapterConnection) -> int:
+    """Run an all-models direct build."""
+
+    return run_direct_build(project_root=project_root, database=database, connection=connection)
+
+
+def run_direct_changed_build(
+    project_root: Path, database: str, connection: AdapterConnection
+) -> int:
+    """Run a changed-only direct build."""
+
+    return run_direct_build(
+        project_root=project_root, database=database, connection=connection, changed=True
+    )
+
+
+def run_virtual_build(project_root: Path, database: str, connection: AdapterConnection) -> int:
+    """Run a virtual build."""
+
+    return run_virtual_environment_build(
+        project_root=project_root, database=database, connection=connection
     )
 
 

@@ -44,8 +44,10 @@ from tests.integration.src.streambuild.cli._test_types import (
     CliDirectStartTimeIntegrationTestCase,
     CliDirectTimezoneStartTimeIntegrationTestCase,
     CliDirectViewBuildIntegrationTestCase,
+    CliLegacyLandingViewIntegrationTestCase,
 )
 from tests.integration.src.streambuild.cli.helpers import (
+    DIRECT_BUILD_LANDING_TABLE_NAME,
     AdoptedLiveInsertConnection,
     DeniedDirectMetadataConnection,
     DirectActionRecordingConnection,
@@ -67,10 +69,16 @@ from tests.integration.src.streambuild.cli.helpers import (
     execute_warehouse_statements,
     insert_landing_rows,
     insert_landing_rows_after_delay,
+    landing_relation_uuids,
+    landing_view_timestamp_projection,
     publish_direct_workflow,
     read_workflow_artifact,
+    replace_landing_view_with_second_precision,
     run_direct_build,
+    run_direct_changed_build,
+    run_direct_full_build,
     run_direct_plan,
+    run_virtual_build,
     run_virtual_environment_build,
     stringify_warehouse_rows,
     warehouse_row_count,
@@ -1083,6 +1091,89 @@ def test_given_virtual_environment_target_when_building_direct_then_direct_repla
     assert virtual_build_exit_code == 0
     assert build_exit_code == test_case.expected_exit_code
     assert test_case.expected_error_fragment in build_error
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliLegacyLandingViewIntegrationTestCase(
+            description="direct build recreates a second-precision landing view in place",
+            virtual_environments=False,
+            run_build=run_direct_full_build,
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            expected_landing_projection="_timestamp_ms",
+            expected_landing_row_count=2,
+        ),
+        CliLegacyLandingViewIntegrationTestCase(
+            description="changed-only direct build leaves an unchanged landing view untouched",
+            virtual_environments=False,
+            run_build=run_direct_changed_build,
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            expected_landing_projection="_timestamp",
+            expected_landing_row_count=2,
+        ),
+        CliLegacyLandingViewIntegrationTestCase(
+            description="virtual build preserves an existing landing view as found",
+            virtual_environments=True,
+            run_build=run_virtual_build,
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            expected_landing_projection="_timestamp",
+            expected_landing_row_count=2,
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_second_precision_landing_view_when_rebuilding_then_landing_storage_is_kept(
+    test_case: CliLegacyLandingViewIntegrationTestCase,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    clickhouse_connection_settings: ClickHouseConnectionSettings,
+    clickhouse_client: Client,
+    clickhouse_database: str,
+) -> None:
+    write_direct_build_project(
+        project_root=tmp_path, virtual_environments=test_case.virtual_environments
+    )
+    connection: AdapterConnection = build_managed_clickhouse_client(
+        clickhouse_connection_settings, database=clickhouse_database
+    )
+
+    try:
+        first_exit_code: int = test_case.run_build(tmp_path, clickhouse_database, connection)
+        _ = capsys.readouterr()
+        replace_landing_view_with_second_precision(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        insert_landing_rows(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            rows=test_case.landing_rows,
+        )
+        uuids_before: tuple[str, str] = landing_relation_uuids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        second_exit_code: int = test_case.run_build(tmp_path, clickhouse_database, connection)
+        second_error: str = capsys.readouterr().err
+        uuids_after: tuple[str, str] = landing_relation_uuids(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        landing_projection: str = landing_view_timestamp_projection(
+            clickhouse_client=clickhouse_client, database=clickhouse_database
+        )
+        landing_row_count: int = warehouse_row_count(
+            clickhouse_client=clickhouse_client,
+            database=clickhouse_database,
+            statement=f"SELECT count() FROM {{database}}.{DIRECT_BUILD_LANDING_TABLE_NAME}",
+        )
+    finally:
+        connection.close()
+
+    assert (first_exit_code, second_exit_code) == (0, 0)
+    assert landing_projection == test_case.expected_landing_projection
+    assert uuids_after == uuids_before
+    assert landing_row_count == test_case.expected_landing_row_count
+    assert "committed offsets" not in second_error
 
 
 @pytest.mark.integration

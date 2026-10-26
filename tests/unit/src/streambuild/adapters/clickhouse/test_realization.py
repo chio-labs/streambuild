@@ -20,6 +20,7 @@ from streambuild.adapters.clickhouse.classes.clickhouse_adapter import ClickHous
 from tests.unit.src.streambuild.adapters.clickhouse._test_types import (
     ClickHouseConsumerGroupTestCase,
     ClickHouseLandingSchemaTestCase,
+    ClickHouseLandingTimestampProjectionTestCase,
     ClickHouseManagedSourceRealizationTestCase,
     ClickHouseModelRealizationTestCase,
     ClickHouseSourceRealizationErrorTestCase,
@@ -148,6 +149,42 @@ def test_given_managed_source_request_when_realizing_then_lands_header_arrays(
     for expected_fragment in test_case.expected_query_fragments:
         assert expected_fragment in landing_view.query
         assert expected_fragment in landing_view.database_template
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ClickHouseLandingTimestampProjectionTestCase(
+            description="lands broker timestamp with millisecond precision",
+            expected_projection="    _timestamp_ms AS kafka_timestamp,\n",
+            unexpected_projection="    _timestamp AS kafka_timestamp,\n",
+        ),
+        ClickHouseLandingTimestampProjectionTestCase(
+            description="lands replay timestamp with millisecond precision",
+            expected_projection="    _timestamp_ms AS _replay_timestamp,\n",
+            unexpected_projection="    _timestamp AS _replay_timestamp,\n",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_managed_source_request_when_realizing_then_lands_millisecond_timestamps(
+    test_case: ClickHouseLandingTimestampProjectionTestCase,
+) -> None:
+    realization: AdapterSourceRealization = ClickHouseAdapter().realize_source(
+        request=AdapterManagedSourceRealizationRequest(
+            logical_name="orders",
+            source_kind="kafka",
+            broker_list="kafka:9092",
+            topic="source.orders",
+            consumer_group=None,
+            format="JSONAsString",
+        )
+    )
+    landing_view: AdapterMaterializedView = cast(AdapterMaterializedView, realization.resources[2])
+
+    for landing_query in (landing_view.query, landing_view.database_template):
+        assert test_case.expected_projection in landing_query
+        assert test_case.unexpected_projection not in landing_query
 
 
 @pytest.mark.parametrize(
