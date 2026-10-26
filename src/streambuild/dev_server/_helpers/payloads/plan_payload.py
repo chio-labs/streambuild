@@ -25,6 +25,7 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSourceDriftSelection,
     DirectSqlChange,
     PlannerWarning,
     PreparedShadowObject,
@@ -134,6 +135,14 @@ def build_mode_aware_plan_payload(
     recreations: tuple[PopulationSourceRecreation, ...] = (
         () if direct is None else direct.workflow.recreated_sources
     )
+    drift_selection_by_source: dict[str, DirectSourceDriftSelection] = (
+        {}
+        if direct is None
+        else {
+            selection.source_key.name: selection
+            for selection in direct.preview.plan.source_drift_selections
+        }
+    )
     phases: list[dict[str, object]] = []
     if virtual is not None:
         phases.append(_virtual_phase_payload(preparation=virtual))
@@ -174,6 +183,7 @@ def build_mode_aware_plan_payload(
                 _source_recreation_payload(
                     recreation=recreation,
                     source_name_by_relation=source_name_by_relation,
+                    drift_selection_by_source=drift_selection_by_source,
                 )
                 for recreation in recreations
             ],
@@ -228,6 +238,7 @@ def _empty_plan_payload(
         "creation": [],
         "replayRoots": [],
         "warnings": [],
+        "sourceRecreations": [],
         "protections": [],
         "replayWindow": (
             {"mode": "full"} if start_time is None else {"mode": "from", "startTime": start_time}
@@ -246,11 +257,16 @@ def _source_name_by_relation(*, analysis: CompileAnalysis) -> dict[str, str]:
 
 
 def _source_recreation_payload(
-    *, recreation: PopulationSourceRecreation, source_name_by_relation: dict[str, str]
+    *,
+    recreation: PopulationSourceRecreation,
+    source_name_by_relation: dict[str, str],
+    drift_selection_by_source: dict[str, DirectSourceDriftSelection],
 ) -> dict[str, object]:
     relation_name: str = recreation.managed_source.resource.name
+    source_name: str = source_name_by_relation.get(relation_name, relation_name)
+    selection: DirectSourceDriftSelection | None = drift_selection_by_source.get(source_name)
     return {
-        "sourceName": source_name_by_relation.get(relation_name, relation_name),
+        "sourceName": source_name,
         "relationName": relation_name,
         "landingViewName": recreation.landing_view_name,
         "landingRelationName": recreation.landing_relation_name,
@@ -258,6 +274,14 @@ def _source_recreation_payload(
         "consumerGroup": recreation.consumer_group,
         "driftedSettings": list(recreation.drifted_setting_names),
         "message": render_source_recreation_notice(recreation),
+        "selectedPipeline": None if selection is None else selection.pipeline_name,
+        "otherReaderPipelines": (
+            []
+            if selection is None
+            else [
+                name for name in selection.reader_pipeline_names if name != selection.pipeline_name
+            ]
+        ),
     }
 
 

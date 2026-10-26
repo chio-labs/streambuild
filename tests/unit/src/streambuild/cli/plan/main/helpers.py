@@ -223,12 +223,15 @@ def build_drifted_source_plan_inputs(
     declared_settings: tuple[tuple[str, str], ...],
     catalog_setting_overrides: tuple[tuple[str, str], ...],
     omitted_catalog_settings: tuple[str, ...],
+    extra_reader_pipelines: tuple[tuple[str, str], ...] = (),
+    changed_model_names: tuple[str, ...] = (),
 ) -> tuple[DirectWarehouseSnapshot, AdapterDirectFingerprintSnapshot]:
     """Write the managed-source scope project and observe it deployed with settled SQL."""
 
     request: DirectBuildRequest = build_managed_source_execution_request(
         project_root=project_root,
         declared_settings=declared_settings,
+        extra_reader_pipelines=extra_reader_pipelines,
     )
     return (
         build_managed_source_snapshot(
@@ -237,6 +240,7 @@ def build_drifted_source_plan_inputs(
             omitted_catalog_settings=omitted_catalog_settings,
         ),
         build_direct_fingerprint_snapshot(
-            analysis=analyze_direct_scope_project(project_root=project_root)
+            analysis=analyze_direct_scope_project(project_root=project_root),
+            changed_model_names=changed_model_names,
         ),
     )

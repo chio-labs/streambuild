@@ -44,6 +44,7 @@ export type PlanSummary = {
 	readonly rowsToReplay: number | null;
 	readonly selectedCount: number;
 	readonly changedCount: number;
+	readonly sourceDriftCount: number;
 	readonly downstreamCount: number;
 	readonly missingUpstreamCount: number;
 	readonly riskyOwnership: Plan['entries'][number]['ownership'];
@@ -79,6 +80,7 @@ export type PlanViewFacade = {
 	status(input: PlanStatusInput): PlanStatus;
 	summary(plan: Plan | null): PlanSummary;
 	boundaryColumns(root: Plan['replayRoots'][number]): string | null;
+	reasonBadge(reason: Plan['entries'][number]['reason']): string;
 	rootSources(project: Project, modelNames: string[]): Source[];
 	selectorToken(selector: Selector): string;
 	formatAgo(value: string | null, now: string): string;

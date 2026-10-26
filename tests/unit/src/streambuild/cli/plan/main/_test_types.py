@@ -137,3 +137,10 @@ class CliChangedSourceDriftPlanTestCase:
     expected_recreated_relation_names: tuple[str, ...] = ()
     expected_drifted_settings: tuple[str, ...] = ()
     expected_error_fragment: str = ""
+    extra_reader_pipelines: tuple[tuple[str, str], ...] = ()
+    changed_model_names: tuple[str, ...] = ()
+    start_time: str | None = None
+    expected_reasons: tuple[str, ...] = ()
+    expected_selected_pipelines: tuple[str, ...] = ()
+    expected_text_fragment: str = ""
+    unexpected_error_fragment: str = ""

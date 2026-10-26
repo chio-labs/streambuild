@@ -500,6 +500,17 @@ class DirectRelationOperation:
 
 
 @dataclass(frozen=True)
+class DirectSourceDriftSelection:
+    """One owning pipeline a changed selection rebuilds so a drifted managed source is recreated."""
+
+    source_key: LogicalResourceKey
+    pipeline_name: str
+    reader_pipeline_names: tuple[str, ...]
+    drifted_setting_names: tuple[str, ...]
+    model_keys: tuple[LogicalResourceKey, ...]
+
+
+@dataclass(frozen=True)
 class DirectPlan:
     """One deterministic direct-mode execution plan for a selected closure."""
 
@@ -515,6 +526,7 @@ class DirectPlan:
     prerequisite_execution_scope: tuple[LogicalResourceKey, ...] = ()
     warnings: tuple[PlannerWarning, ...] = ()
     effective_start_time: str | None = None
+    source_drift_selections: tuple[DirectSourceDriftSelection, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "selection_mode", DirectSelectionMode(self.selection_mode))

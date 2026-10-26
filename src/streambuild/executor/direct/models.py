@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from streambuild.adapter.models import AdapterReplayRequest
+from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.discovery.types import ReplayLineageMode
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.models import DirectPlan
@@ -38,6 +39,15 @@ class DirectBuildRequest:
         """Return the normalized lower bound carried by the confirmed plan."""
 
         return self.plan.effective_start_time
+
+
+@dataclass(frozen=True)
+class DriftedManagedSource:
+    """One deployed managed source whose Kafka settings differ from the project declaration."""
+
+    source_key: LogicalResourceKey
+    owner_pipeline_names: tuple[str, ...]
+    drifted_setting_names: tuple[str, ...]
 
 
 @dataclass(frozen=True)

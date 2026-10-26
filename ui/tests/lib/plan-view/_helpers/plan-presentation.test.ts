@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { summarizePlan } from '$lib/plan-view/_helpers/plan-presentation';
+import { planReasonBadge, summarizePlan } from '$lib/plan-view/_helpers/plan-presentation';
 import type { PlanSummary } from '$lib/plan-view/types';
 import type { Plan } from '$lib/planning/types';
 
@@ -12,7 +12,9 @@ const RECREATION: Plan['sourceRecreations'][number] = {
 	stagedRelationName: '_streambuild_next__kafka__orders',
 	consumerGroup: 'streambuild_orders_analytics',
 	driftedSettings: ['kafka_max_block_size'],
-	message: 'kafka__orders and mv__orders are recreated with the declared settings.'
+	message: 'kafka__orders and mv__orders are recreated with the declared settings.',
+	selectedPipeline: 'pl__orders',
+	otherReaderPipelines: []
 };
 const RECREATION_WARNING: Plan['warnings'][number] = {
 	code: 'managed_source_recreated',
@@ -60,5 +62,33 @@ describe('plan source recreations', () => {
 
 		expect(summary.sourceRecreations).toEqual([]);
 		expect(summary.plannerWarnings).toEqual([]);
+	});
+});
+
+describe('plan entry reasons', () => {
+	it('given models rebuilt for source drift when summarized then they are counted apart from changed', () => {
+		const plan: Plan = {
+			...planWith([RECREATION], []),
+			entries: [
+				{ modelName: 'orders_clean', reason: 'changed', ownership: [] },
+				{ modelName: 'orders_enriched', reason: 'source_drift', ownership: [] },
+				{ modelName: 'orders_daily', reason: 'source_drift', ownership: [] },
+				{ modelName: 'orders_summary', reason: 'downstream_of_selected', ownership: [] }
+			]
+		} as unknown as Plan;
+
+		const summary: PlanSummary = summarizePlan(plan);
+
+		expect([summary.changedCount, summary.sourceDriftCount, summary.downstreamCount]).toEqual([
+			1, 2, 1
+		]);
+	});
+
+	it('given each reason when labelled then drift and downstream read as words', () => {
+		expect(
+			(['changed', 'source_drift', 'downstream_of_selected', 'selected'] as const).map(
+				planReasonBadge
+			)
+		).toEqual(['changed', 'source drift', 'downstream', 'selected']);
 	});
 });

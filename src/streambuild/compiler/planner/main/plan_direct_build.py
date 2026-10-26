@@ -6,7 +6,11 @@ from streambuild.compiler.compile.models import LogicalResourceKey
 from streambuild.compiler.graph.models import ProjectGraph
 from streambuild.compiler.pipeline.models import RealizedProject
 from streambuild.compiler.planner.classes.direct_plan_builder import DirectPlanBuilder
-from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
+from streambuild.compiler.planner.models import (
+    DirectPlan,
+    DirectSourceDriftSelection,
+    DirectWarehouseSnapshot,
+)
 from streambuild.compiler.planner.types import DirectSelectionMode
 
 
@@ -20,6 +24,7 @@ def plan_direct_build(
     selection_mode: DirectSelectionMode | None = None,
     include_missing_upstream: bool = False,
     effective_start_time: str | None = None,
+    source_drift_selections: tuple[DirectSourceDriftSelection, ...] = (),
 ) -> DirectPlan:
     """Plan the complete selected downstream closure without change pruning."""
 
@@ -35,4 +40,5 @@ def plan_direct_build(
         selection_mode=resolved_selection_mode,
         include_missing_upstream=include_missing_upstream,
         effective_start_time=effective_start_time,
+        source_drift_selections=source_drift_selections,
     ).build()

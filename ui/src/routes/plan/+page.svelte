@@ -422,7 +422,11 @@
 						{:else if selectors.length === 0 && !changed}
 							{summary.planEntries.length} · all models
 						{:else if changed}
-							{summary.changedCount} changed · {summary.downstreamCount} downstream of changed models
+							{summary.changedCount} changed
+							{#if summary.sourceDriftCount > 0}
+								· {summary.sourceDriftCount} for source drift
+							{/if}
+							· {summary.downstreamCount} downstream of changed models
 						{:else}
 							{summary.selectedCount} selected · {summary.downstreamCount} downstream of selection
 						{/if}
@@ -476,6 +480,17 @@
 											<code class="sb-tag code">{setting}</code>
 										{/each}
 									</span>
+									{#if recreation.selectedPipeline !== null}
+										<span class="text-[var(--sb-text-faint)]">rebuilds</span>
+										<span class="flex min-w-0 flex-wrap gap-x-2">
+											<span class="code truncate">pipeline:{recreation.selectedPipeline}</span>
+											{#if recreation.otherReaderPipelines.length > 0}
+												<span class="text-[var(--sb-text-faint)]">
+													{recreation.otherReaderPipelines.join(', ')} keep reading {recreation.landingRelationName}
+												</span>
+											{/if}
+										</span>
+									{/if}
 								</div>
 								<div class="text-[var(--sb-text-faint)] pt-1.5 font-mono text-[10px] leading-relaxed">
 									Resumes from the committed offsets of consumer group
@@ -546,7 +561,7 @@
 							<div class="flex items-center gap-2.5">
 								<span class="code truncate text-[11px]">{entry.modelName}</span>
 								<span class="text-[var(--sb-text-faint)] font-mono text-[10px]">
-									{entry.reason === 'downstream_of_selected' ? 'downstream' : entry.reason}
+									{planView.reasonBadge(entry.reason)}
 								</span>
 								{#if entry.sqlChange}
 									<span

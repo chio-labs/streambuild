@@ -1145,10 +1145,21 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
         CliDirectChangedSourceRecreationIntegrationTestCase(
             description="changed selection picks up a declared consumer setting",
             landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_topic="source.orders",
             rebuilt_settings=(("kafka_max_block_size", "500"),),
             expected_execution_scope=(DIRECT_BUILD_MODEL_NAME,),
             expected_drifted_settings=("kafka_max_block_size",),
             expected_kafka_ddl_fragments=("kafka_max_block_size = '500'",),
+            expected_order_ids=("order-1", "order-2"),
+        ),
+        CliDirectChangedSourceRecreationIntegrationTestCase(
+            description="changed selection picks up a changed topic",
+            landing_rows=(("order-1", 0, 1), ("order-2", 0, 2)),
+            rebuilt_topic="source.orders.renamed",
+            rebuilt_settings=(),
+            expected_execution_scope=(DIRECT_BUILD_MODEL_NAME,),
+            expected_drifted_settings=("kafka_topic_list",),
+            expected_kafka_ddl_fragments=("kafka_topic_list = 'source.orders.renamed'",),
             expected_order_ids=("order-1", "order-2"),
         ),
     ],
@@ -1181,7 +1192,9 @@ def test_given_drifted_source_settings_when_building_changed_then_owner_recreate
             clickhouse_client=clickhouse_client, database=clickhouse_database
         )
         write_direct_build_project(
-            project_root=tmp_path, source_settings=test_case.rebuilt_settings
+            project_root=tmp_path,
+            topic=test_case.rebuilt_topic,
+            source_settings=test_case.rebuilt_settings,
         )
         plan_exit_code: int = run_direct_plan(
             project_root=tmp_path,
@@ -1219,6 +1232,9 @@ def test_given_drifted_source_settings_when_building_changed_then_owner_recreate
     assert (first_exit_code, plan_exit_code, rebuild_exit_code, replan_exit_code) == (0, 0, 0, 0)
     assert plan_payload["selection_mode"] == "changed"
     assert tuple(key["name"] for key in execution_scope) == test_case.expected_execution_scope
+    assert [entry["reason"] for entry in cast(list[dict[str, str]], plan_payload["entries"])] == [
+        "source_drift"
+    ]
     assert [recreation["drifted_settings"] for recreation in recreations] == [
         list(test_case.expected_drifted_settings)
     ]

@@ -28,6 +28,8 @@ from tests.unit.src.streambuild.compiler.planner.helpers import (
     write_direct_scope_project,
 )
 
+_TOPIC_DRIFT: tuple[tuple[str, str], ...] = (("kafka_topic_list", "source.orders.previous"),)
+
 
 @pytest.mark.parametrize(
     "test_case",
@@ -212,6 +214,8 @@ def test_given_no_changed_models_when_planning_then_plan_is_a_no_op(
             expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
             expected_recreated_relation_names=("kafka__orders",),
             expected_drifted_settings=("kafka_max_block_size",),
+            expected_reasons=(*(("source_drift",) * 4), "downstream_of_selected"),
+            expected_selected_pipelines=("pl__orders",),
         ),
         CliChangedSourceDriftPlanTestCase(
             description="a changed topic selects its reader like an explicit pipeline selection",
@@ -220,6 +224,8 @@ def test_given_no_changed_models_when_planning_then_plan_is_a_no_op(
             expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
             expected_recreated_relation_names=("kafka__orders",),
             expected_drifted_settings=("kafka_topic_list",),
+            expected_reasons=(*(("source_drift",) * 4), "downstream_of_selected"),
+            expected_selected_pipelines=("pl__orders",),
         ),
     ],
     ids=lambda case: case.description,
@@ -236,6 +242,8 @@ def test_given_drifted_managed_source_when_planning_changed_then_owner_plan_matc
         declared_settings=test_case.declared_settings,
         catalog_setting_overrides=test_case.catalog_setting_overrides,
         omitted_catalog_settings=test_case.omitted_catalog_settings,
+        extra_reader_pipelines=test_case.extra_reader_pipelines,
+        changed_model_names=test_case.changed_model_names,
     )
 
     changed_exit_code: int = run_scope_project_plan(
@@ -274,6 +282,13 @@ def test_given_drifted_managed_source_when_planning_changed_then_owner_plan_matc
         for field in ("execution_scope", "teardown", "creation", "replay_roots")
     }
     assert changed_payload["source_recreations"] == explicit_payload["source_recreations"]
+    assert tuple(entry["reason"] for entry in changed_payload["entries"]) == (
+        test_case.expected_reasons
+    )
+    assert tuple(
+        selection["pipeline_name"] for selection in changed_payload["source_drift_selections"]
+    ) == (test_case.expected_selected_pipelines)
+    assert explicit_payload["source_drift_selections"] == []
 
 
 @pytest.mark.parametrize(
@@ -304,6 +319,8 @@ def test_given_undrifted_managed_source_when_planning_changed_then_nothing_is_se
         declared_settings=test_case.declared_settings,
         catalog_setting_overrides=test_case.catalog_setting_overrides,
         omitted_catalog_settings=test_case.omitted_catalog_settings,
+        extra_reader_pipelines=test_case.extra_reader_pipelines,
+        changed_model_names=test_case.changed_model_names,
     )
 
     exit_code: int = run_scope_project_plan(
@@ -331,8 +348,15 @@ def test_given_undrifted_managed_source_when_planning_changed_then_nothing_is_se
                 ("kafka_group_name", "streambuild_orders_previous"),
             ),
             expected_error_fragment=(
-                "kafka__orders consumes as consumer group 'streambuild_orders_previous'"
+                "pipeline 'pl__orders' was selected because source 'orders' settings drifted "
+                "from the project, and kafka__orders consumes as consumer group "
+                "'streambuild_orders_previous'"
             ),
+            expected_text_fragment=(
+                "has drifted: kafka__orders consumes as consumer group "
+                "'streambuild_orders_previous'"
+            ),
+            unexpected_error_fragment="was selected because",
         ),
     ],
     ids=lambda case: case.description,
@@ -349,6 +373,8 @@ def test_given_blocking_source_drift_when_planning_changed_then_it_fails_like_a_
         declared_settings=test_case.declared_settings,
         catalog_setting_overrides=test_case.catalog_setting_overrides,
         omitted_catalog_settings=test_case.omitted_catalog_settings,
+        extra_reader_pipelines=test_case.extra_reader_pipelines,
+        changed_model_names=test_case.changed_model_names,
     )
 
     changed_exit_code: int = run_scope_project_plan(
@@ -370,7 +396,196 @@ def test_given_blocking_source_drift_when_planning_changed_then_it_fails_like_a_
 
     assert (changed_exit_code, explicit_exit_code) == (1, 1)
     assert test_case.expected_error_fragment in changed_error
-    assert changed_error == explicit_error
+    assert test_case.expected_text_fragment in explicit_error
+    assert test_case.unexpected_error_fragment not in explicit_error
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="one of two direct readers is rebuilt, chosen by sorted pipeline name",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            expected_execution_scope=("order_audit_model",),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=("source_drift",),
+            expected_selected_pipelines=("pl__order_audit",),
+            expected_text_fragment=(
+                "orders settings drifted (kafka_topic_list); --changed rebuilds "
+                "pipeline:pl__order_audit to recreate it; pl__orders keep reading the preserved "
+                "landing table"
+            ),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="a reader already rebuilt for changed SQL adds no other pipeline",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            changed_model_names=("alpha",),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=("changed", *(("downstream_of_selected",) * 4)),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="a reader rebuilt downstream of changed SQL adds no other pipeline",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            changed_model_names=("beta",),
+            expected_execution_scope=("beta", "gamma", "delta"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=("changed", "downstream_of_selected", "downstream_of_selected"),
+        ),
+        CliChangedSourceDriftPlanTestCase(
+            description="a virtual reader is skipped in favour of the direct one",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            extra_reader_pipelines=(("pl__order_audit", "virtual"),),
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+            expected_recreated_relation_names=("kafka__orders",),
+            expected_reasons=(*(("source_drift",) * 4), "downstream_of_selected"),
+            expected_selected_pipelines=("pl__orders",),
+            expected_text_fragment="--changed rebuilds pipeline:pl__orders to recreate it",
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drifted_source_readers_when_planning_changed_then_one_owner_is_rebuilt(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+        extra_reader_pipelines=test_case.extra_reader_pipelines,
+        changed_model_names=test_case.changed_model_names,
+    )
+
+    json_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    payload: dict = json.loads(capsys.readouterr().out)
+    text_exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=False,
+        changed=True,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+    text: str = capsys.readouterr().out
+
+    assert (json_exit_code, text_exit_code) == (0, 0)
+    assert tuple(key["name"] for key in payload["execution_scope"]) == (
+        test_case.expected_execution_scope
+    )
+    assert tuple(entry["reason"] for entry in payload["entries"]) == test_case.expected_reasons
+    assert tuple(
+        selection["pipeline_name"] for selection in payload["source_drift_selections"]
+    ) == (test_case.expected_selected_pipelines)
+    assert tuple(recreation["relation_name"] for recreation in payload["source_recreations"]) == (
+        test_case.expected_recreated_relation_names
+    )
+    assert test_case.expected_text_fragment in text
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="a start time is refused for a pipeline selected only for source drift",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            start_time="2026-08-01T00:00:00Z",
+            expected_error_fragment=(
+                "--changed selects pipeline:pl__orders because the settings of source 'orders' "
+                "drifted from the project, and --start-time would rebuild their models from "
+                "that time only"
+            ),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_drift_selected_pipeline_when_planning_changed_from_start_time_then_it_is_refused(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+    )
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        start_time=test_case.start_time,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+
+    assert exit_code == 1
+    assert test_case.expected_error_fragment in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        CliChangedSourceDriftPlanTestCase(
+            description="a start time stays available when changed SQL already rebuilds the reader",
+            declared_settings=(),
+            catalog_setting_overrides=_TOPIC_DRIFT,
+            changed_model_names=("alpha",),
+            start_time="2026-08-01T00:00:00Z",
+            expected_execution_scope=("alpha", "beta", "gamma", "delta", "order_summary"),
+        ),
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_sql_changed_reader_when_planning_changed_from_start_time_then_it_is_planned(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    test_case: CliChangedSourceDriftPlanTestCase,
+) -> None:
+    snapshot: DirectWarehouseSnapshot
+    fingerprints: AdapterDirectFingerprintSnapshot
+    snapshot, fingerprints = build_drifted_source_plan_inputs(
+        project_root=tmp_path,
+        declared_settings=test_case.declared_settings,
+        catalog_setting_overrides=test_case.catalog_setting_overrides,
+        omitted_catalog_settings=test_case.omitted_catalog_settings,
+        changed_model_names=test_case.changed_model_names,
+    )
+
+    exit_code: int = run_scope_project_plan(
+        project_root=tmp_path,
+        json_output=True,
+        changed=True,
+        start_time=test_case.start_time,
+        direct_fingerprints=fingerprints,
+        warehouse_snapshot=snapshot,
+    )
+
+    payload: dict = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert tuple(key["name"] for key in payload["execution_scope"]) == (
+        test_case.expected_execution_scope
+    )
+    assert payload["source_drift_selections"] == []
 
 
 @pytest.mark.parametrize(

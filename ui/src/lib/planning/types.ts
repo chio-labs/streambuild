@@ -5,6 +5,7 @@ type OwnershipState = 'direct' | 'unmanaged' | 'conflicted' | 'absent' | 'virtua
 type PlanEntryReason =
 	| 'selected'
 	| 'changed'
+	| 'source_drift'
 	| 'downstream_of_selected'
 	| 'missing_upstream'
 	| 'all_models';
@@ -51,6 +52,8 @@ type PlanSourceRecreation = {
 	consumerGroup: string;
 	driftedSettings: string[];
 	message: string;
+	selectedPipeline: string | null;
+	otherReaderPipelines: string[];
 };
 type PlanProtection = { pipelineName: string; warning: string; confirmation: string };
 type PlanPrerequisite = {

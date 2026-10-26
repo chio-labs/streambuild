@@ -13,6 +13,7 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSourceDriftSelection,
     DirectSqlChange,
     PlannerWarning,
 )
@@ -48,6 +49,9 @@ def render_direct_plan_json(
         "replay_roots": [_replay_root_payload(root) for root in plan.replay_roots],
         "teardown": [_operation_payload(operation) for operation in plan.teardown_operations],
         "creation": [_operation_payload(operation) for operation in plan.creation_operations],
+        "source_drift_selections": [
+            _source_drift_selection_payload(selection) for selection in plan.source_drift_selections
+        ],
         "source_recreations": [
             _source_recreation_payload(recreation) for recreation in source_recreations
         ],
@@ -74,6 +78,9 @@ def render_direct_plan_text(
     entry: DirectPlanEntry
     for entry in plan.entries:
         lines.extend(_render_model_decision(entry=entry, verbose=verbose))
+    selection: DirectSourceDriftSelection
+    for selection in plan.source_drift_selections:
+        lines.append(f"{cli_style().label('source')}  {render_source_drift_selection(selection)}")
     recreation: PopulationSourceRecreation
     for recreation in source_recreations:
         lines.append(
@@ -168,6 +175,35 @@ def render_source_recreation_notice(recreation: PopulationSourceRecreation) -> s
         f"group '{recreation.consumer_group}', or follows the Kafka engine's offset reset "
         "policy on a topic where the group has none."
     )
+
+
+def render_source_drift_selection(selection: DirectSourceDriftSelection) -> str:
+    """Explain which owning pipeline a changed selection rebuilds for one drifted source."""
+
+    other_readers: tuple[str, ...] = tuple(
+        name for name in selection.reader_pipeline_names if name != selection.pipeline_name
+    )
+    kept_note: str = (
+        f"; {', '.join(other_readers)} keep reading the preserved landing table"
+        if other_readers
+        else ""
+    )
+    return (
+        f"{selection.source_key.name} settings drifted "
+        f"({', '.join(selection.drifted_setting_names)}); --changed rebuilds "
+        f"pipeline:{selection.pipeline_name} to recreate it{kept_note}"
+    )
+
+
+def _source_drift_selection_payload(selection: DirectSourceDriftSelection) -> dict[str, object]:
+    return {
+        "source_name": selection.source_key.name,
+        "pipeline_name": selection.pipeline_name,
+        "reader_pipeline_names": list(selection.reader_pipeline_names),
+        "drifted_settings": list(selection.drifted_setting_names),
+        "model_keys": [_logical_key_payload(key) for key in selection.model_keys],
+        "message": render_source_drift_selection(selection),
+    }
 
 
 def _source_recreation_payload(recreation: PopulationSourceRecreation) -> dict[str, object]:

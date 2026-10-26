@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -19,7 +20,11 @@ from streambuild.adapters.clickhouse._helpers.metadata import (
 from streambuild.adapters.clickhouse.main.database_scoped_consumer_group import (
     database_scoped_consumer_group,
 )
-from streambuild.compiler.compile.models import LogicalResourceKey
+from streambuild.compiler.compile.models import (
+    CompiledPipeline,
+    CompiledProject,
+    LogicalResourceKey,
+)
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
 from streambuild.compiler.planner.types import DirectSelectionMode
@@ -283,10 +288,26 @@ def build_managed_source_execution_request(
     project_root: Path,
     declared_settings: tuple[tuple[str, str], ...],
     selected_model_names: tuple[str, ...] = ("alpha",),
+    extra_reader_pipelines: tuple[tuple[str, str], ...] = (),
 ) -> DirectBuildRequest:
-    """Plan the scope project plus a downstream pipeline that only reads ``alpha``."""
+    """Plan the scope project plus a downstream pipeline that only reads ``alpha``.
+
+    Each ``(pipeline name, mode)`` in ``extra_reader_pipelines`` adds a pipeline whose single
+    ``<name>_model`` reads the ``orders`` source directly.
+    """
 
     write_direct_scope_project(project_root=project_root)
+    pipeline_name: str
+    pipeline_mode: str
+    for pipeline_name, pipeline_mode in extra_reader_pipelines:
+        reader_root: Path = project_root / "pipelines" / pipeline_name
+        reader_root.mkdir(parents=True)
+        (reader_root / "pipeline.toml").write_text(f'mode = "{pipeline_mode}"\n', encoding="utf-8")
+        (reader_root / f"{pipeline_name.removeprefix('pl__')}_model.sql").write_text(
+            'MODEL (order_by ["order_id"]);\n'
+            'SELECT order_id::UInt64 AS order_id FROM __source("orders")\n',
+            encoding="utf-8",
+        )
     summary_root: Path = project_root / "pipelines" / "pl__order_summary"
     summary_root.mkdir(parents=True)
     (summary_root / "order_summary.sql").write_text(
@@ -306,6 +327,28 @@ def build_managed_source_execution_request(
     return _analyze_direct_execution_request(
         project_root=project_root,
         selected_model_names=selected_model_names,
+    )
+
+
+def without_models(
+    *, request: DirectBuildRequest, model_names: frozenset[str]
+) -> DirectBuildRequest:
+    """Drop the named models from every pipeline while keeping each pipeline's source."""
+
+    project: CompiledProject = request.realized_project.project
+    pipelines: tuple[CompiledPipeline, ...] = tuple(
+        replace(
+            pipeline,
+            models=tuple(filter(lambda model: model.key.name not in model_names, pipeline.models)),
+        )
+        for pipeline in project.pipelines
+    )
+    return replace(
+        request,
+        realized_project=replace(
+            request.realized_project,
+            project=replace(project, pipelines=pipelines),
+        ),
     )
 
 

@@ -20,8 +20,9 @@ from streambuild.compiler.compile.models import (
     LogicalResourceKey,
 )
 from streambuild.compiler.pipeline.models import RealizedProject
-from streambuild.compiler.planner.models import DirectPlan
+from streambuild.compiler.planner.models import DirectPlan, DirectSourceDriftSelection
 from streambuild.executor.direct.exceptions import DirectBuildError
+from streambuild.executor.direct.models import DriftedManagedSource
 from streambuild.executor.population.models import (
     PopulationManagedSource,
     PopulationRealization,
@@ -62,6 +63,7 @@ def plan_preserved_managed_sources(
             realized_project=realized_project,
             reader_pipelines_by_source=reader_pipelines_by_source,
         ),
+        selection_notes=_source_drift_selection_notes(plan=plan, realized_project=realized_project),
     )
     recreated_names: frozenset[str] = frozenset(
         recreation.managed_source.resource.name for recreation in recreated_sources
@@ -158,28 +160,36 @@ def _source_owner_pipelines(
     }
 
 
-def drifted_managed_source_owners(
+def drifted_managed_sources(
     *, realized_project: RealizedProject, catalog: CatalogSnapshot
-) -> tuple[str, ...]:
-    """Name the pipelines whose rebuild recreates a deployed source whose settings drifted."""
+) -> tuple[DriftedManagedSource, ...]:
+    """Return each deployed managed source whose settings drifted, with its sorted owners."""
 
     owners_by_source: dict[LogicalResourceKey, tuple[str, ...]] = _source_owner_pipelines(
         realized_project=realized_project
     )
-    owner_names: set[str] = set()
+    drifted: list[DriftedManagedSource] = []
     key: LogicalResourceKey
-    owners: tuple[str, ...]
-    for key, owners in owners_by_source.items():
+    for key in sorted(owners_by_source, key=lambda source_key: source_key.name):
+        drifted_setting_names: list[str] = []
         resource: AdapterManagedSource | AdapterTable | AdapterMaterializedView
         for resource in _managed_source_resources(
             realized_project=realized_project, source_keys=frozenset((key,))
         ):
-            if not isinstance(resource, AdapterManagedSource):
-                continue
             relation: CatalogRelation | None = catalog.relation(resource.name)
-            if relation is not None and _managed_source_drift(resource=resource, relation=relation):
-                owner_names.update(owners)
-    return tuple(sorted(owner_names))
+            if isinstance(resource, AdapterManagedSource) and relation is not None:
+                drifted_setting_names.extend(
+                    _managed_source_drift(resource=resource, relation=relation)
+                )
+        if drifted_setting_names:
+            drifted.append(
+                DriftedManagedSource(
+                    source_key=key,
+                    owner_pipeline_names=tuple(sorted(owners_by_source[key])),
+                    drifted_setting_names=tuple(drifted_setting_names),
+                )
+            )
+    return tuple(drifted)
 
 
 def _unselected_source_hints(
@@ -195,12 +205,12 @@ def _unselected_source_hints(
     for key, pipeline_names in reader_pipelines_by_source.items():
         if not pipeline_names:
             continue
-        selectors: str = ", ".join(f"pipeline:{name}" for name in pipeline_names)
+        readers: str = ", ".join(repr(name) for name in sorted(pipeline_names))
         hint: str = (
-            f"source '{key.name}' is read directly only by pipeline "
-            f"{', '.join(repr(name) for name in pipeline_names)}, which this build does not "
-            f"rebuild; include {selectors} in the selection to recreate it with the declared "
-            "settings"
+            f"source '{key.name}' is read directly only by pipeline {readers}, which this "
+            "build does not "
+            f"rebuild; include pipeline:{min(pipeline_names)} in the selection to recreate it "
+            "with the declared settings"
         )
         hints.update(
             (resource.name, hint)
@@ -208,6 +218,25 @@ def _unselected_source_hints(
             if isinstance(resource, AdapterManagedSource)
         )
     return hints
+
+
+def _source_drift_selection_notes(
+    *, plan: DirectPlan, realized_project: RealizedProject
+) -> dict[str, str]:
+    """Explain, per source relation, why a changed selection rebuilds the owning pipeline."""
+
+    notes: dict[str, str] = {}
+    selection: DirectSourceDriftSelection
+    for selection in plan.source_drift_selections:
+        note: str = (
+            f"pipeline '{selection.pipeline_name}' was selected because source "
+            f"'{selection.source_key.name}' settings drifted from the project, and "
+        )
+        notes.update(
+            (resource.name, note)
+            for resource in realized_project.resources_by_logical_key[selection.source_key]
+        )
+    return notes
 
 
 def _managed_source_resources(
@@ -233,6 +262,7 @@ def _plan_source_recreations(
     catalog: CatalogSnapshot,
     database: str,
     prerequisite_hints: dict[str, str],
+    selection_notes: dict[str, str],
 ) -> tuple[PopulationSourceRecreation, ...]:
     blocking_drift: list[str] = []
     prerequisite_drift: list[str] = []
@@ -259,7 +289,8 @@ def _plan_source_recreations(
                 database=database,
             )
             blocking_drift.extend(
-                _consumer_group_drift(relation=relation, consumer_group=consumer_group)
+                f"{selection_notes.get(resource.name, '')}{drift}"
+                for drift in _consumer_group_drift(relation=relation, consumer_group=consumer_group)
             )
             landing_view: AdapterMaterializedView = _landing_view(
                 managed_source=resource, resources=resources
@@ -274,9 +305,15 @@ def _plan_source_recreations(
                 )
             )
         elif isinstance(resource, AdapterTable):
-            blocking_drift.extend(_landing_table_drift(resource=resource, relation=relation))
+            blocking_drift.extend(
+                f"{selection_notes.get(resource.name, '')}{drift}"
+                for drift in _landing_table_drift(resource=resource, relation=relation)
+            )
         else:
-            blocking_drift.extend(_landing_view_drift(resource=resource, relation=relation))
+            blocking_drift.extend(
+                f"{selection_notes.get(resource.name, '')}{drift}"
+                for drift in _landing_view_drift(resource=resource, relation=relation)
+            )
     if blocking_drift:
         raise DirectBuildError(
             "Direct build preserves managed source infrastructure and cannot continue while it "

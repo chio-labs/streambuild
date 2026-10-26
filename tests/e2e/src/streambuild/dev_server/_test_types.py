@@ -227,3 +227,13 @@ class TrustedProxyBrowserE2ETestCase:
     spoofed_username: str
     expected_username: str
     expected_denied_reason: str
+
+
+@dataclass(frozen=True)
+class PlanSourceRecreationBrowserE2ETestCase:
+    description: str
+    source_recreations: tuple[dict[str, object], ...]
+    expected_section_count: int
+    expected_section_fragments: tuple[str, ...]
+    expected_summary_fragment: str
+    expected_warning_count: int

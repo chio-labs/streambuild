@@ -46,6 +46,7 @@ from streambuild.compiler.planner.models import (
     DirectPrerequisite,
     DirectRelationOperation,
     DirectReplayRoot,
+    DirectSourceDriftSelection,
     DirectSqlChange,
     DirectWarehouseSnapshot,
     PlannerWarning,
@@ -81,6 +82,7 @@ class DirectPlanBuilder:
         selection_mode: DirectSelectionMode,
         include_missing_upstream: bool,
         effective_start_time: str | None = None,
+        source_drift_selections: tuple[DirectSourceDriftSelection, ...] = (),
     ) -> None:
         self._graph: ProjectGraph = graph
         self._realized_project: RealizedProject = realized_project
@@ -90,6 +92,15 @@ class DirectPlanBuilder:
         self._selection_mode: DirectSelectionMode = selection_mode
         self._include_missing_upstream: bool = include_missing_upstream
         self._effective_start_time: str | None = effective_start_time
+        self._source_drift_selections: tuple[DirectSourceDriftSelection, ...] = (
+            source_drift_selections
+        )
+        source_drift_model_keys: set[LogicalResourceKey] = set()
+        for selection in source_drift_selections:
+            source_drift_model_keys.update(selection.model_keys)
+        self._source_drift_model_keys: frozenset[LogicalResourceKey] = frozenset(
+            source_drift_model_keys
+        )
         self._model_by_key: dict[LogicalResourceKey, CompiledModel] = {
             model.key: model for model in realized_project.project.models
         }
@@ -147,6 +158,7 @@ class DirectPlanBuilder:
             teardown_operations=_teardown_operations(entries=entries),
             creation_operations=_creation_operations(entries=entries),
             warnings=self._build_warnings(entries=entries),
+            source_drift_selections=self._source_drift_selections,
         )
 
     def _resolve_normal_execution_scope(self) -> tuple[LogicalResourceKey, ...]:
@@ -281,6 +293,8 @@ class DirectPlanBuilder:
             return DirectPlanReason.ALL_MODELS
         if model_key in self._prerequisite_execution_scope:
             return DirectPlanReason.MISSING_UPSTREAM
+        if model_key in self._source_drift_model_keys:
+            return DirectPlanReason.SOURCE_DRIFT
         if model_key in self._selected_model_keys:
             return (
                 DirectPlanReason.CHANGED
