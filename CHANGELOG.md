@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.9](https://github.com/chio-labs/streambuild/compare/v0.41.8...v0.41.9) (2026-10-26)
+
+
+### Bug Fixes
+
+* **plan:** select drifted Kafka sources in changed builds and show them in the plan ([#259](https://github.com/chio-labs/streambuild/issues/259)) ([64bb4a1](https://github.com/chio-labs/streambuild/commit/64bb4a13ee4d8a31d4118f8ed190faef8a16180a))
+
 ## [0.41.8](https://github.com/chio-labs/streambuild/compare/v0.41.7...v0.41.8) (2026-10-26)
 
 
