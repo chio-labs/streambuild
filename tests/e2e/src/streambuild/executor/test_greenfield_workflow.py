@@ -1,4 +1,5 @@
 import json
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
@@ -642,6 +643,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         )
     )
 
+    produced_timestamp_ms: int = int(time.time()) * 1000 + 123
     producer: KafkaProducer = build_kafka_producer(
         bootstrap_server=e2e_kafka_connection_settings.bootstrap_server
     )
@@ -653,6 +655,7 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
                 (order_id, json.dumps({"order_id": order_id}))
                 for order_id in test_case.expected_order_ids
             ),
+            timestamp_ms=produced_timestamp_ms,
             headers=test_case.produced_headers,
         )
     finally:
@@ -665,7 +668,8 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
         expected_count=len(test_case.expected_order_ids),
     )
     landed_header_rows: Sequence[Sequence[object]] = e2e_clickhouse_client.query(
-        "SELECT kafka_header_keys, kafka_header_values FROM "
+        "SELECT kafka_header_keys, kafka_header_values, "
+        "toUnixTimestamp64Milli(kafka_timestamp), toUnixTimestamp64Milli(_replay_timestamp) FROM "
         f"{e2e_clickhouse_database}.{require_managed_source(compiled_pipeline).raw_table.name} "
         "ORDER BY _replay_offset"
     ).result_rows
@@ -674,6 +678,9 @@ def test_given_kafka_backed_greenfield_pipeline_when_running_then_it_publishes_e
     )
     assert tuple(tuple(row[1]) for row in landed_header_rows) == tuple(
         test_case.expected_header_values for _order_id in test_case.expected_order_ids
+    )
+    assert tuple((row[2], row[3]) for row in landed_header_rows) == tuple(
+        (produced_timestamp_ms, produced_timestamp_ms) for _order_id in test_case.expected_order_ids
     )
 
     run_streambuild_virtual_build_cli(

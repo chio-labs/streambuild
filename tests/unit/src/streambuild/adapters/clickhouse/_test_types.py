@@ -104,6 +104,13 @@ class ClickHouseLandingSchemaTestCase:
 
 
 @dataclass(frozen=True)
+class ClickHouseLandingTimestampProjectionTestCase:
+    description: str
+    expected_projection: str
+    unexpected_projection: str
+
+
+@dataclass(frozen=True)
 class ClickHousePublishCapabilitiesTestCase:
     description: str
     expected_stable_logical_bindings: bool

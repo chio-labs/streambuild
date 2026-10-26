@@ -249,6 +249,16 @@ class CliCrossModeBuildIntegrationTestCase:
 
 
 @dataclass(frozen=True)
+class CliLegacyLandingViewIntegrationTestCase:
+    description: str
+    virtual_environments: bool
+    run_build: Callable[[Path, str, AdapterConnection], int]
+    landing_rows: tuple[tuple[str, int, int], ...]
+    expected_landing_projection: str
+    expected_landing_row_count: int
+
+
+@dataclass(frozen=True)
 class CliDirectBuildAuditIntegrationTestCase:
     description: str
     audit_sql_by_name: tuple[tuple[str, str], ...]
