@@ -616,3 +616,84 @@ def available_port() -> int:
     with socket.socket() as port_socket:
         port_socket.bind(("127.0.0.1", 0))
         return int(port_socket.getsockname()[1])
+
+
+SOURCE_RECREATION_MESSAGE: str = (
+    "kafka__orders and mv__orders are recreated with the declared settings (kafka_topic_list); "
+    "raw__orders and its rows are kept."
+)
+SOURCE_RECREATION_SQL_DIFF: str = (
+    "--- previous\n+++ current\n@@ -1,2 +1,2 @@\n SELECT order_id\n-FROM orders\n"
+    "+FROM orders WHERE order_id > 0\n"
+)
+SOURCE_RECREATION: dict[str, object] = {
+    "sourceName": "orders",
+    "relationName": "kafka__orders",
+    "landingViewName": "mv__orders",
+    "landingRelationName": "raw__orders",
+    "stagedRelationName": "_streambuild_next__kafka__orders",
+    "consumerGroup": "streambuild_orders_analytics",
+    "driftedSettings": ["kafka_topic_list", "kafka_max_block_size"],
+    "message": SOURCE_RECREATION_MESSAGE,
+    "selectedPipeline": "pl__moving_events",
+    "otherReaderPipelines": ["pl__order_audit"],
+}
+
+
+def build_source_recreation_plan_payload(
+    *, source_recreations: list[dict[str, object]]
+) -> dict[str, object]:
+    """Serve a direct changed plan whose owning pipeline is rebuilt for a drifted source."""
+
+    return {
+        "mode": "direct",
+        "database": "analytics",
+        "userScope": [],
+        "entries": [
+            {
+                "modelName": "moving_orders",
+                "pipeline": "pl__moving_events",
+                "reason": "source_drift",
+                "relationNames": ["tbl__moving_orders"],
+                "resourceKinds": ["table"],
+                "drivingInput": None,
+                "isReplayRoot": False,
+                "sqlChange": {
+                    "status": "query_changed",
+                    "unifiedDiff": SOURCE_RECREATION_SQL_DIFF,
+                    "warning": None,
+                },
+            }
+        ],
+        "prerequisites": [],
+        "teardown": [],
+        "creation": [],
+        "replayRoots": [],
+        "warnings": [
+            {
+                "code": "managed_source_recreated",
+                "message": SOURCE_RECREATION_MESSAGE,
+                "relatedModel": None,
+            }
+        ],
+        "sourceRecreations": source_recreations,
+        "protections": [],
+        "replayWindow": {"mode": "full"},
+        "plannedAt": "2026-08-01T12:00:00Z",
+        "command": "stb build --changed",
+        "executionOrder": ["direct"],
+        "phases": [
+            {
+                "mode": "direct",
+                "effect": "applied_immediately",
+                "deploymentId": None,
+                "modelNames": ["moving_orders"],
+                "contextModelNames": [],
+                "relationNames": ["tbl__moving_orders"],
+                "actions": [],
+                "startTime": None,
+            }
+        ],
+        "deploymentId": None,
+        "upperBoundary": {"mode": "captured_at_execution", "continuesLive": True},
+    }

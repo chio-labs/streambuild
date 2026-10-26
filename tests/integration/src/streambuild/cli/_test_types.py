@@ -256,6 +256,7 @@ class CliDirectSourceRecreationIntegrationTestCase:
 class CliDirectChangedSourceRecreationIntegrationTestCase:
     description: str
     landing_rows: tuple[tuple[str, int, int], ...]
+    rebuilt_topic: str
     rebuilt_settings: tuple[tuple[str, str], ...]
     expected_execution_scope: tuple[str, ...]
     expected_drifted_settings: tuple[str, ...]

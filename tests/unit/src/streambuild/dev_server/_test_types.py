@@ -357,6 +357,7 @@ class PlanSourceRecreationTestCase:
     expected_message_fragments: tuple[str, ...]
     expected_source_recreation: dict[str, object]
     expected_actions: tuple[tuple[str, str, str, str], ...]
+    expected_entry_reasons: tuple[str, ...]
 
 
 @dataclass(frozen=True)

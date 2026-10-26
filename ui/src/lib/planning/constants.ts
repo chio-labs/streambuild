@@ -1,5 +1,7 @@
 export const PLAN_REASON_LABEL: Record<string, string> = {
 	selected: 'selected',
+	changed: 'changed',
+	source_drift: 'source drift',
 	downstream_of_selected: 'downstream of selection',
 	all_models: 'all models'
 };

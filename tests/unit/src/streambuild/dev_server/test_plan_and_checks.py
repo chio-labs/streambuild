@@ -46,6 +46,7 @@ from tests.unit.src.streambuild.dev_server.helpers import (
     FakeEmptyResultConnection,
     build_compile_callable,
     build_direct_plan_preparation,
+    build_direct_source_drift_plan_preparation,
     build_direct_source_recreation_plan_preparation,
     build_fake_state_connection,
     build_mixed_plan_preparation,
@@ -221,6 +222,8 @@ def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution
                 "stagedRelationName": "_streambuild_next__kafka__orders",
                 "consumerGroup": "streambuild_orders_analytics",
                 "driftedSettings": ["kafka_topic_list"],
+                "selectedPipeline": None,
+                "otherReaderPipelines": [],
             },
             expected_actions=(
                 ("preparation", "stage", "orders", "_streambuild_next__kafka__orders"),
@@ -228,7 +231,26 @@ def test_given_mode_aware_preparation_when_planning_then_returns_exact_execution
                 ("preparation", "retire", "orders", "_streambuild_next__kafka__orders"),
                 ("creation", "create", "orders_clean", "tbl__orders_clean"),
             ),
-        )
+            expected_entry_reasons=("selected",),
+        ),
+        PlanSourceRecreationTestCase(
+            description="a changed selection names the pipeline it rebuilds for the source",
+            preparation_builder=build_direct_source_drift_plan_preparation,
+            expected_warning_code="managed_source_recreated",
+            expected_message_fragments=("raw__orders and its rows are kept",),
+            expected_source_recreation={
+                "sourceName": "orders",
+                "selectedPipeline": "order_events",
+                "otherReaderPipelines": ["order_audit"],
+            },
+            expected_actions=(
+                ("preparation", "stage", "orders", "_streambuild_next__kafka__orders"),
+                ("preparation", "swap", "orders", "kafka__orders"),
+                ("preparation", "retire", "orders", "_streambuild_next__kafka__orders"),
+                ("creation", "create", "orders_clean", "tbl__orders_clean"),
+            ),
+            expected_entry_reasons=("source_drift",),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -262,6 +284,9 @@ def test_given_source_recreation_when_planning_then_plan_describes_it(
         (action["phase"], action["action"], action["logicalName"], action["physicalName"])
         for action in actions
     ) == (test_case.expected_actions)
+    assert tuple(entry["reason"] for entry in payload["entries"]) == (
+        test_case.expected_entry_reasons
+    )
 
 
 @pytest.mark.parametrize(

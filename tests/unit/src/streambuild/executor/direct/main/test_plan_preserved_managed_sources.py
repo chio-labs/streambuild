@@ -429,6 +429,28 @@ def test_given_interrupted_source_recreation_when_executing_then_landing_is_rest
             ),
             expected_recreated_relation_names=(),
         ),
+        DirectPrerequisiteSourceTestCase(
+            description="the hint names one of several direct readers to include",
+            selected_model_names=("order_summary",),
+            extra_reader_pipelines=(("pl__order_audit", "direct"),),
+            expected_error_fragments=(
+                "source 'orders' is read directly only by pipeline 'pl__order_audit', "
+                "'pl__orders', which this build does not rebuild",
+                "include pipeline:pl__order_audit in the selection to recreate it",
+            ),
+            expected_recreated_relation_names=(),
+        ),
+        DirectPrerequisiteSourceTestCase(
+            description="the hint names a direct reader rather than a virtual one",
+            selected_model_names=("order_summary",),
+            extra_reader_pipelines=(("pl__order_audit", "virtual"),),
+            expected_error_fragments=(
+                "source 'orders' is read directly only by pipeline 'pl__order_audit', "
+                "'pl__orders', which this build does not rebuild",
+                "include pipeline:pl__orders in the selection to recreate it",
+            ),
+            expected_recreated_relation_names=(),
+        ),
     ],
     ids=lambda case: case.description,
 )
@@ -440,6 +462,7 @@ def test_given_prerequisite_only_source_drift_when_planning_then_build_is_blocke
         project_root=tmp_path,
         declared_settings=(),
         selected_model_names=test_case.selected_model_names,
+        extra_reader_pipelines=test_case.extra_reader_pipelines,
     )
     snapshot: DirectWarehouseSnapshot = build_managed_source_snapshot(
         request=request,

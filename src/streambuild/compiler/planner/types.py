@@ -80,6 +80,7 @@ class DirectPlanReason(StrEnum):
 
     SELECTED = "selected"
     CHANGED = "changed"
+    SOURCE_DRIFT = "source_drift"
     DOWNSTREAM_OF_SELECTED = "downstream_of_selected"
     MISSING_UPSTREAM = "missing_upstream"
     ALL_MODELS = "all_models"

@@ -62,7 +62,9 @@ describe('plan mapping', () => {
 						stagedRelationName: '_streambuild_next__kafka__orders',
 						consumerGroup: 'streambuild_orders_analytics',
 						driftedSettings: ['kafka_topic_list'],
-						message: 'kafka__orders and mv__orders are recreated.'
+						message: 'kafka__orders and mv__orders are recreated.',
+						selectedPipeline: 'pl__orders',
+						otherReaderPipelines: ['pl__order_audit']
 					}
 				]
 			},
@@ -78,7 +80,9 @@ describe('plan mapping', () => {
 				stagedRelationName: '_streambuild_next__kafka__orders',
 				consumerGroup: 'streambuild_orders_analytics',
 				driftedSettings: ['kafka_topic_list'],
-				message: 'kafka__orders and mv__orders are recreated.'
+				message: 'kafka__orders and mv__orders are recreated.',
+				selectedPipeline: 'pl__orders',
+				otherReaderPipelines: ['pl__order_audit']
 			}
 		]);
 	});

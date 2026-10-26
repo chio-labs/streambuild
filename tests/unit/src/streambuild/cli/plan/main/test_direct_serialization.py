@@ -106,6 +106,7 @@ from tests.unit.src.streambuild.cli.plan.main._test_types import (
                         "resource_kind": "table",
                     }
                 ],
+                "source_drift_selections": [],
                 "source_recreations": [],
                 "warnings": [
                     {

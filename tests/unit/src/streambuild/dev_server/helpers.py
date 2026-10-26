@@ -61,6 +61,7 @@ from streambuild.compiler.planner.models import (
     DirectPlan,
     DirectPlanEntry,
     DirectRelationOperation,
+    DirectSourceDriftSelection,
     PlannerWarning,
     PreparedShadowObject,
 )
@@ -859,6 +860,32 @@ def build_direct_source_recreation_plan_preparation() -> DirectWorkflowPreparati
             ),
         ),
     )
+
+
+def build_direct_source_drift_plan_preparation() -> DirectWorkflowPreparation:
+    """Plan a source recreation that a changed selection reached through its owning pipeline."""
+
+    preparation: DirectWorkflowPreparation = build_direct_source_recreation_plan_preparation()
+    model_key: LogicalResourceKey = LogicalResourceKey("model", "orders_clean")
+    plan: DirectPlan = preparation.preview.plan
+    preview: MagicMock = MagicMock()
+    preview.database = "analytics"
+    preview.effective_start_time = None
+    preview.plan = replace(
+        plan,
+        selection_mode="changed",
+        entries=tuple(replace(entry, reason="source_drift") for entry in plan.entries),
+        source_drift_selections=(
+            DirectSourceDriftSelection(
+                source_key=LogicalResourceKey("source", "orders"),
+                pipeline_name="order_events",
+                reader_pipeline_names=("order_audit", "order_events"),
+                drifted_setting_names=("kafka_topic_list",),
+                model_keys=(model_key,),
+            ),
+        ),
+    )
+    return replace(preparation, preview=preview)
 
 
 def build_fake_state_connection(

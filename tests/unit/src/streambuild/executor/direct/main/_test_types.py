@@ -100,6 +100,7 @@ class DirectPrerequisiteSourceTestCase:
     selected_model_names: tuple[str, ...]
     expected_error_fragments: tuple[str, ...]
     expected_recreated_relation_names: tuple[str, ...]
+    extra_reader_pipelines: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -116,4 +117,13 @@ class DirectDriftedSourceOwnerTestCase:
     catalog_setting_overrides: tuple[tuple[str, str], ...]
     omitted_catalog_settings: tuple[str, ...]
     extra_landing_columns: tuple[tuple[str, str], ...]
-    expected_owner_pipelines: tuple[str, ...]
+    expected_drifted_sources: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]
+    extra_reader_pipelines: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class DirectDriftedSourceShapeTestCase:
+    description: str
+    removed_model_names: frozenset[str]
+    deployed: bool
+    expected_drifted_sources: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]

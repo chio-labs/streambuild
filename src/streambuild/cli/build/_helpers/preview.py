@@ -5,6 +5,7 @@ from __future__ import annotations
 from streambuild.adapter.classes.adapter_connection import AdapterConnection
 from streambuild.adapter.models import AdapterDirectFingerprintRecord
 from streambuild.adapter.types import AdapterOptionalStateStatus
+from streambuild.cli.build._helpers.confirmation import build_protection_requirements
 from streambuild.cli.build.models import DirectBuildPreviewContext, WorkflowPreparationOptions
 from streambuild.cli.entry.exceptions import CliUserError
 from streambuild.cli.entry.main._resolve_default_database import resolve_default_database
@@ -14,6 +15,9 @@ from streambuild.cli.selection.models import SelectionResolution
 from streambuild.compiler.compile.models import CompiledTableModel, LogicalResourceKey
 from streambuild.compiler.discovery.models import PostgresRefreshSourceStep
 from streambuild.compiler.discovery.types import PipelineMode
+from streambuild.compiler.graph.constants import ALL_DEPENDENCY_EDGE_TYPES
+from streambuild.compiler.graph.main.collect_reachable_keys import collect_reachable_keys
+from streambuild.compiler.graph.types import GraphTraversalDirection
 from streambuild.compiler.pipeline.models import CompileAnalysis
 from streambuild.compiler.planner.classes.direct_model_fingerprint import DirectModelFingerprint
 from streambuild.compiler.planner.exceptions import DirectPlanError
@@ -21,11 +25,14 @@ from streambuild.compiler.planner.main.load_direct_warehouse_snapshot import (
     load_direct_warehouse_snapshot,
 )
 from streambuild.compiler.planner.main.plan_direct_build import plan_direct_build
-from streambuild.compiler.planner.models import DirectPlan, DirectWarehouseSnapshot
-from streambuild.compiler.planner.types import DirectSelectionMode
-from streambuild.executor.direct.main.drifted_managed_source_owners import (
-    drifted_managed_source_owners,
+from streambuild.compiler.planner.models import (
+    DirectPlan,
+    DirectSourceDriftSelection,
+    DirectWarehouseSnapshot,
 )
+from streambuild.compiler.planner.types import DirectSelectionMode
+from streambuild.executor.direct.main.drifted_managed_sources import drifted_managed_sources
+from streambuild.executor.direct.models import DriftedManagedSource
 
 
 def build_direct_build_preview(
@@ -59,13 +66,28 @@ def build_direct_build_preview(
     )
     selection_mode: DirectSelectionMode
     selected_model_keys: frozenset[LogicalResourceKey]
+    source_drift_selections: tuple[DirectSourceDriftSelection, ...] = ()
     if options.changed:
         selection_mode = DirectSelectionMode.CHANGED
-        selected_model_keys = _changed_direct_model_keys(
+        sql_changed_model_keys: frozenset[LogicalResourceKey] = _changed_direct_model_keys(
             analysis=analysis,
             snapshot=snapshot,
             database=database,
         )
+        source_drift_selections = _source_drift_selections(
+            analysis=analysis,
+            snapshot=snapshot,
+            sql_changed_model_keys=sql_changed_model_keys,
+        )
+        _reject_source_drift_start_time(
+            source_drift_selections=source_drift_selections,
+            start_time=options.start_time,
+        )
+        selected_model_key_set: set[LogicalResourceKey] = set(sql_changed_model_keys)
+        drift_selection: DirectSourceDriftSelection
+        for drift_selection in source_drift_selections:
+            selected_model_key_set.update(drift_selection.model_keys)
+        selected_model_keys = frozenset(selected_model_key_set)
         _reject_changed_replayless_start_time(
             analysis=analysis,
             selected_model_keys=selected_model_keys,
@@ -90,6 +112,7 @@ def build_direct_build_preview(
         selection_mode=selection_mode,
         include_missing_upstream=options.include_missing_upstream,
         effective_start_time=start_time,
+        source_drift_selections=source_drift_selections,
     )
     return DirectBuildPreviewContext(
         analysis=analysis,
@@ -118,28 +141,124 @@ def _changed_direct_model_keys(
     baseline_by_identity: dict[str, AdapterDirectFingerprintRecord] = {
         baseline.logical_model_identity: baseline for baseline in snapshot.fingerprints.baselines
     }
-    drifted_source_owners: frozenset[str] = frozenset(
-        drifted_managed_source_owners(
-            realized_project=analysis.realized_project,
-            catalog=snapshot.catalog,
-        )
-    )
-    source_owner_model_key_set: set[LogicalResourceKey] = set()
-    for pipeline in analysis.compiled_project.pipelines:
-        if pipeline.pipeline.name in drifted_source_owners:
-            source_owner_model_key_set.update(model.key for model in pipeline.models)
-    source_owner_model_keys: frozenset[LogicalResourceKey] = frozenset(source_owner_model_key_set)
     return frozenset(
         model.key
         for model in analysis.compiled_project.models
         if model.key in direct_model_keys
-        and (
-            model.key in source_owner_model_keys
-            or DirectModelFingerprint.drift_reasons(
-                model=model,
-                baseline=baseline_by_identity.get(f"{database}.{model.key.name}"),
+        and DirectModelFingerprint.drift_reasons(
+            model=model,
+            baseline=baseline_by_identity.get(f"{database}.{model.key.name}"),
+        )
+    )
+
+
+def _source_drift_selections(
+    *,
+    analysis: CompileAnalysis,
+    snapshot: DirectWarehouseSnapshot,
+    sql_changed_model_keys: frozenset[LogicalResourceKey],
+) -> tuple[DirectSourceDriftSelection, ...]:
+    """Add one direct owner per drifted source, preferring unprotected owners, then by name."""
+
+    direct_models_by_pipeline: dict[str, tuple[LogicalResourceKey, ...]] = {}
+    for pipeline in analysis.compiled_project.pipelines:
+        if PipelineMode(pipeline.pipeline.mode) == PipelineMode.DIRECT:
+            direct_models_by_pipeline[pipeline.pipeline.name] = tuple(
+                model.key for model in pipeline.models
+            )
+    selected_keys: set[LogicalResourceKey] = set(sql_changed_model_keys)
+    selections: list[DirectSourceDriftSelection] = []
+    drifted: DriftedManagedSource
+    for drifted in drifted_managed_sources(
+        realized_project=analysis.realized_project,
+        catalog=snapshot.catalog,
+    ):
+        direct_owners: tuple[str, ...] = tuple(
+            sorted(
+                (
+                    name
+                    for name in drifted.owner_pipeline_names
+                    if name in direct_models_by_pipeline
+                ),
+                key=lambda name: (
+                    _is_protected(analysis=analysis, model_keys=direct_models_by_pipeline[name]),
+                    name,
+                ),
             )
         )
+        if not direct_owners or _rebuilds_any_pipeline(
+            analysis=analysis,
+            selected_keys=frozenset(selected_keys),
+            pipeline_keys=tuple(direct_models_by_pipeline[name] for name in direct_owners),
+        ):
+            continue
+        owner_keys: tuple[LogicalResourceKey, ...] = direct_models_by_pipeline[direct_owners[0]]
+        selections.append(
+            DirectSourceDriftSelection(
+                source_key=drifted.source_key,
+                pipeline_name=direct_owners[0],
+                reader_pipeline_names=drifted.owner_pipeline_names,
+                drifted_setting_names=drifted.drifted_setting_names,
+                model_keys=tuple(key for key in owner_keys if key not in selected_keys),
+            )
+        )
+        selected_keys.update(owner_keys)
+    return tuple(selections)
+
+
+def _is_protected(*, analysis: CompileAnalysis, model_keys: tuple[LogicalResourceKey, ...]) -> bool:
+    """Report whether rebuilding these models would require a protection confirmation."""
+
+    return bool(
+        build_protection_requirements(
+            compiled_project=analysis.compiled_project,
+            execution_model_keys=frozenset(model_keys),
+        )
+    )
+
+
+def _rebuilds_any_pipeline(
+    *,
+    analysis: CompileAnalysis,
+    selected_keys: frozenset[LogicalResourceKey],
+    pipeline_keys: tuple[tuple[LogicalResourceKey, ...], ...],
+) -> bool:
+    """Report whether the downstream closure of the selection reaches any of the pipelines."""
+
+    if not selected_keys:
+        return False
+    rebuilt_keys: frozenset[LogicalResourceKey] = frozenset(
+        collect_reachable_keys(
+            graph=analysis.graph,
+            root_keys=selected_keys,
+            direction=GraphTraversalDirection.DOWNSTREAM,
+            edge_types=ALL_DEPENDENCY_EDGE_TYPES,
+        )
+    )
+    return any(rebuilt_keys.intersection(keys) for keys in pipeline_keys)
+
+
+def _reject_source_drift_start_time(
+    *,
+    source_drift_selections: tuple[DirectSourceDriftSelection, ...],
+    start_time: str | None,
+) -> None:
+    """Refuse a replay window that would discard history of pipelines only drift selected."""
+
+    if start_time is None or not source_drift_selections:
+        return
+    names: tuple[str, ...] = tuple(
+        f"pipeline:{selection.pipeline_name}" for selection in source_drift_selections
+    )
+    selectors: str = ", ".join(names)
+    sources: str = ", ".join(
+        f"'{selection.source_key.name}'" for selection in source_drift_selections
+    )
+    raise CliUserError(
+        f"--changed selects {selectors} because the settings of source {sources} drifted from "
+        "the project, and --start-time would rebuild their models from that time only, "
+        f"discarding earlier history. Run `stb build --select {' '.join(names)}` without "
+        "--start-time first, then rerun with --changed --start-time."
     )
 
 

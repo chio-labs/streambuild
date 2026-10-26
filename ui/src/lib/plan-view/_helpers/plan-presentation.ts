@@ -2,6 +2,8 @@ import { STRUCTURED_PLAN_WARNING_CODES } from '$lib/planning/constants';
 import type { Plan } from '$lib/planning/types';
 import type { PlanSummary } from '$lib/plan-view/types';
 
+type PlanEntryReason = Plan['entries'][number]['reason'];
+
 export function summarizePlan(plan: Plan | null): PlanSummary {
 	const planEntries: Plan['entries'] = plan?.entries ?? [];
 	const replayRoots: Plan['replayRoots'] = plan?.replayRoots ?? [];
@@ -23,6 +25,7 @@ export function summarizePlan(plan: Plan | null): PlanSummary {
 				: replayRoots.reduce((total, root) => total + (root.rowsToReplay ?? 0), 0),
 		selectedCount: planEntries.filter((entry) => entry.reason === 'selected').length,
 		changedCount: planEntries.filter((entry) => entry.reason === 'changed').length,
+		sourceDriftCount: planEntries.filter((entry) => entry.reason === 'source_drift').length,
 		downstreamCount: planEntries.filter((entry) => entry.reason === 'downstream_of_selected').length,
 		missingUpstreamCount: planEntries.filter((entry) => entry.reason === 'missing_upstream').length,
 		riskyOwnership: planEntries.flatMap((entry) =>
@@ -46,4 +49,14 @@ export function planBoundaryColumns(root: Plan['replayRoots'][number]): string |
 		return columns.timestamp ?? null;
 	}
 	return columns.landed_at ?? null;
+}
+
+const PLAN_ENTRY_BADGE: Readonly<Partial<Record<PlanEntryReason, string>>> = {
+	downstream_of_selected: 'downstream',
+	source_drift: 'source drift'
+};
+
+/** Short badge for why a model is in the plan; source drift reads as words, not an identifier. */
+export function planReasonBadge(reason: PlanEntryReason): string {
+	return PLAN_ENTRY_BADGE[reason] ?? reason;
 }

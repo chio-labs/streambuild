@@ -472,7 +472,9 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 			stagedRelationName: (recreation.stagedRelationName as string) ?? '',
 			consumerGroup: (recreation.consumerGroup as string) ?? '',
 			driftedSettings: (recreation.driftedSettings as string[]) ?? [],
-			message: (recreation.message as string) ?? ''
+			message: (recreation.message as string) ?? '',
+			selectedPipeline: (recreation.selectedPipeline as string | null) ?? null,
+			otherReaderPipelines: (recreation.otherReaderPipelines as string[]) ?? []
 		})),
 		protections: ((payload.protections as Payload[]) ?? []).map((protection) => ({
 			pipelineName: (protection.pipelineName as string) ?? '',
