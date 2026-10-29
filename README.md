@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/chio-labs/streambuild/main/.github/streambuild-logo-dark.png" alt="StreamBuild" width="100%">
+  <img src="https://raw.githubusercontent.com/sqlstack-io/streambuild/main/.github/streambuild-logo-dark.png" alt="StreamBuild" width="100%">
 </p>
 
 <p align="center">
@@ -8,9 +8,9 @@
 
 <p align="center">
   <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/v/streambuild" alt="PyPI"></a>
-  <a href="https://github.com/chio-labs/streambuild/actions/workflows/verify.yml"><img src="https://github.com/chio-labs/streambuild/actions/workflows/verify.yml/badge.svg" alt="Verification"></a>
+  <a href="https://github.com/sqlstack-io/streambuild/actions/workflows/verify.yml"><img src="https://github.com/sqlstack-io/streambuild/actions/workflows/verify.yml/badge.svg" alt="Verification"></a>
   <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/pyversions/streambuild" alt="Python versions"></a>
-  <a href="https://github.com/chio-labs/streambuild/blob/main/LICENSE"><img src="https://img.shields.io/github/license/chio-labs/streambuild" alt="License"></a>
+  <a href="https://github.com/sqlstack-io/streambuild/blob/main/LICENSE"><img src="https://img.shields.io/github/license/sqlstack-io/streambuild" alt="License"></a>
 </p>
 
 StreamBuild lets data teams define continuously updating ClickHouse pipelines in typed SQL, inspect
@@ -43,7 +43,7 @@ The included deterministic commerce demo runs locally with Redpanda and ClickHou
 Docker with Compose, Node.js 20.19 or newer, npm, and [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/chio-labs/streambuild.git
+git clone https://github.com/sqlstack-io/streambuild.git
 cd streambuild
 make ui-install ui-build
 uv tool install --editable .
@@ -310,7 +310,7 @@ closure are never replayed.
 
 `stb dev` serves a warehouse-backed interface for one resolved project and target. It provides:
 
-![StreamBuild lineage view showing the orders demo pipeline](https://raw.githubusercontent.com/chio-labs/streambuild/main/.github/streambuild-ui.png)
+![StreamBuild lineage view showing the orders demo pipeline](https://raw.githubusercontent.com/sqlstack-io/streambuild/main/.github/streambuild-ui.png)
 
 - overview, lineage, pipeline, catalog, source, topic, and message inspection
 - connected plan previews and protected-pipeline confirmation
