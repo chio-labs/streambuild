@@ -10,11 +10,11 @@ use sqltide_sqltext::sql_scan::{
 
 create_exception!(_native, SqlScanError, PyValueError);
 
-type Span = (usize, usize, usize, usize, usize, usize);
+pub(crate) type Span = (usize, usize, usize, usize, usize, usize);
 type Reference = (String, &'static str, Option<&'static str>, Span);
 type Cte = (String, String, Span);
 
-fn span(span: SourceSpan) -> Span {
+pub(crate) fn span(span: SourceSpan) -> Span {
     (
         span.start,
         span.end,
@@ -25,7 +25,7 @@ fn span(span: SourceSpan) -> Span {
     )
 }
 
-fn raise(error: ScanError) -> PyErr {
+pub(crate) fn raise(error: ScanError) -> PyErr {
     let kind: &str = match error.kind {
         ScanErrorKind::Analysis => "analysis",
         ScanErrorKind::MissingWithClause => "missing_with",

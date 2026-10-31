@@ -5,8 +5,8 @@ from copy import deepcopy
 from typing import Any
 
 from sqltide.compiler.sql_analysis._helpers.polyglot import (
-    _parse_relation,
     generate_sql_tree,
+    parse_relation_tree,
     parse_sql_tree,
 )
 from sqltide.compiler.sql_analysis.constants import (
@@ -318,8 +318,8 @@ def _rewritten_relation(
     )
     if rewrite is None:
         return relation
-    replacement: dict[str, Any] = deepcopy(
-        _parse_relation(target=rewrite.target_relation, dialect=dialect)[0]
+    replacement: dict[str, Any] = parse_relation_tree(
+        target=rewrite.target_relation, dialect=dialect
     )
     if rewrite.preserve_source_database:
         _transfer_relation_database(source=table_payload, replacement=replacement)

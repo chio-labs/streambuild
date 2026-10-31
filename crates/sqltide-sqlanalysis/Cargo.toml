@@ -1,0 +1,17 @@
+[package]
+name = "sqltide-sqlanalysis"
+version.workspace = true
+description = "Polyglot tree analysis for the SQLTide compiler: model facts, projections and relation resolution."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+polyglot-sql.workspace = true
+# Trees are walked in serialization order, which decides first-match and error precedence.
+serde_json = { workspace = true, features = ["preserve_order"] }
+sqltide-sqltext.workspace = true
+
+[lints]
+workspace = true

@@ -83,25 +83,6 @@ class ReferenceRewriteErrorTestCase:
 
 
 @dataclass(frozen=True)
-class PolyglotCallCountTestCase:
-    description: str
-    sql: str
-    resolver: dict[str, str]
-    expected_parse_calls: int
-    expected_generate_calls: int
-
-
-@dataclass(frozen=True)
-class PolyglotInvocationCacheTestCase:
-    description: str
-    first_sql: str
-    second_sql: str
-    resolver: dict[str, str]
-    expected_parse_calls: int
-    expected_generate_calls: int
-
-
-@dataclass(frozen=True)
 class SqlAnalysisBoundaryTestCase:
     description: str
     forbidden_import: str
@@ -171,17 +152,6 @@ class ModelRawRelationTestCase:
     sql: str
     resolver: dict[str, str]
     expected_error_fragment: str
-
-
-@dataclass(frozen=True)
-class ModelCallCountTestCase:
-    description: str
-    sql: str
-    resolver: dict[str, str]
-    expected_parse_calls: int
-    expected_parse_one_calls: int
-    expected_analyze_calls: int
-    expected_generate_calls: int
 
 
 @dataclass(frozen=True)

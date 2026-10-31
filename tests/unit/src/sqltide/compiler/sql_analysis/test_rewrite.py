@@ -1,16 +1,8 @@
-from unittest.mock import patch
-
 import pytest
 
-import sqltide._native as _native
-from sqltide.compiler.sql_analysis.classes.sql_reference_rewriter import (
-    SqlReferenceRewriter,
-)
 from sqltide.compiler.sql_analysis.exceptions import SqlAnalysisError
 from sqltide.compiler.sql_analysis.main._rewrite_references import rewrite_references
 from tests.unit.src.sqltide.compiler.sql_analysis._test_types import (
-    PolyglotCallCountTestCase,
-    PolyglotInvocationCacheTestCase,
     ReferenceRewriteErrorTestCase,
     ReferenceRewriteTestCase,
 )
@@ -141,81 +133,3 @@ def test_given_invalid_relation_rewrite_when_rewriting_then_raises_without_fallb
             resolver=test_case.resolver,
             dialect="clickhouse",
         )
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        PolyglotCallCountTestCase(
-            description="parses authored SQL once and each unique replacement once",
-            sql=(
-                'SELECT * FROM __ref("orders") o '
-                'JOIN __ref("orders") p USING id '
-                'JOIN __source("customers") c USING customer_id'
-            ),
-            resolver={
-                "orders": "analytics.orders",
-                "customers": "raw.customers",
-            },
-            expected_parse_calls=3,
-            expected_generate_calls=3,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_repeated_targets_when_rewriting_then_bounds_polyglot_calls(
-    test_case: PolyglotCallCountTestCase,
-) -> None:
-    with (
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
-            wraps=_native.polyglot_parse_one,
-        ) as parse_one,
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
-            wraps=_native.polyglot_generate,
-        ) as generate,
-    ):
-        _ = rewrite_references(
-            sql=test_case.sql,
-            resolver=test_case.resolver,
-            dialect="clickhouse",
-        )
-
-    assert parse_one.call_count == test_case.expected_parse_calls
-    assert generate.call_count == test_case.expected_generate_calls
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        PolyglotInvocationCacheTestCase(
-            description="reuses replacement parsing across models in one invocation",
-            first_sql='SELECT * FROM __ref("orders") first_orders',
-            second_sql='SELECT count() FROM __ref("orders") second_orders',
-            resolver={"orders": "analytics.orders"},
-            expected_parse_calls=3,
-            expected_generate_calls=3,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_shared_rewriter_when_rewriting_models_then_reuses_invocation_relation_cache(
-    test_case: PolyglotInvocationCacheTestCase,
-) -> None:
-    rewriter: SqlReferenceRewriter = SqlReferenceRewriter(dialect="clickhouse")
-    with (
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
-            wraps=_native.polyglot_parse_one,
-        ) as parse_one,
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
-            wraps=_native.polyglot_generate,
-        ) as generate,
-    ):
-        _ = rewriter.rewrite(sql=test_case.first_sql, resolver=test_case.resolver)
-        _ = rewriter.rewrite(sql=test_case.second_sql, resolver=test_case.resolver)
-
-    assert parse_one.call_count == test_case.expected_parse_calls
-    assert generate.call_count == test_case.expected_generate_calls

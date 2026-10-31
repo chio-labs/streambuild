@@ -1,9 +1,7 @@
 """Analyze model storage expressions against strict output columns."""
 
-from typing import Any
-
-from sqltide.compiler.sql_analysis._helpers.polyglot import parse_sql_tree
-from sqltide.compiler.sql_analysis.constants import POLYGLOT_COLUMN_KEY, POLYGLOT_NAME_KEY
+import sqltide._native as _native
+from sqltide.compiler.sql_analysis._helpers.polyglot import sql_tree_error
 from sqltide.compiler.sql_analysis.exceptions import SqlStorageReferenceError
 from sqltide.compiler.sql_analysis.models import SqlOutputColumn, SqlStorageExpression
 from sqltide.compiler.sql_analysis.types import SqlStorageExpressionKind
@@ -15,7 +13,7 @@ def analyze_storage_expressions(
     partition_by: str | None,
     ttl: str | None,
     output_columns: tuple[SqlOutputColumn, ...],
-    dialect: str,
+    analyzer: _native.SqlTreeAnalyzer,
 ) -> tuple[SqlStorageExpression, ...]:
     """Parse every authored storage expression once and validate its references."""
 
@@ -31,7 +29,7 @@ def analyze_storage_expressions(
             kind=kind,
             expression=expression,
             output_columns=output_columns,
-            dialect=dialect,
+            analyzer=analyzer,
         )
         for kind, expression in expressions
     )
@@ -42,10 +40,12 @@ def _analyze_storage_expression(
     kind: SqlStorageExpressionKind,
     expression: str,
     output_columns: tuple[SqlOutputColumn, ...],
-    dialect: str,
+    analyzer: _native.SqlTreeAnalyzer,
 ) -> SqlStorageExpression:
-    tree: dict[str, Any] = parse_sql_tree(sql=expression, dialect=dialect)
-    referenced_column_names: tuple[str, ...] = tuple(_column_names(tree))
+    try:
+        referenced_column_names: tuple[str, ...] = tuple(analyzer.storage_column_names(expression))
+    except _native.SqlTreeError as error:
+        raise sql_tree_error(error) from None
     available_column_names: tuple[str, ...] = tuple(column.name for column in output_columns)
     available: set[str] = set(available_column_names)
     unknown_column_names: tuple[str, ...] = tuple(
@@ -63,27 +63,3 @@ def _analyze_storage_expression(
         sql=expression,
         referenced_column_names=referenced_column_names,
     )
-
-
-def _column_names(node: Any) -> list[str]:
-    names: list[str] = []
-    if isinstance(node, list):
-        item: Any
-        for item in node:
-            names.extend(_column_names(item))
-        return names
-    if not isinstance(node, dict):
-        return names
-    column_payload: Any = node.get(POLYGLOT_COLUMN_KEY)
-    if isinstance(column_payload, dict):
-        identifier: Any = column_payload.get(POLYGLOT_NAME_KEY)
-        if isinstance(identifier, dict):
-            name: Any = identifier.get(POLYGLOT_NAME_KEY)
-            if isinstance(name, str):
-                names.append(name)
-        return names
-    value: Any
-    for value in node.values():
-        if isinstance(value, dict | list):
-            names.extend(_column_names(value))
-    return names
