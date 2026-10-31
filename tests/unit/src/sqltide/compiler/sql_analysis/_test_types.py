@@ -109,7 +109,7 @@ class SqlAnalysisBoundaryTestCase:
     expected_outside_import_paths: tuple[str, ...]
     expected_removed_source_paths: tuple[str, ...]
     expected_retired_path_exists: bool
-    expected_dependency_spec: str
+    retired_dependency_name: str
 
 
 @dataclass(frozen=True)

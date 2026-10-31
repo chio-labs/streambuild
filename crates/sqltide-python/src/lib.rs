@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod polyglot;
 mod sql_scan;
 
 use pyo3::exceptions::PyValueError;
@@ -51,5 +52,6 @@ fn value_object<'py>(py: Python<'py>, value: &HeaderValue) -> PyResult<Bound<'py
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(parse_model_header, module)?)?;
+    polyglot::register(module)?;
     sql_scan::register(module)
 }

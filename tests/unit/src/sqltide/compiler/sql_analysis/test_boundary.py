@@ -15,13 +15,13 @@ from tests.unit.src.sqltide.compiler.sql_analysis._test_types import (
     "test_case",
     [
         SqlAnalysisBoundaryTestCase(
-            description="keeps Polyglot imports and AST objects inside sql analysis",
+            description="keeps Polyglot in the native engine and its trees inside sql analysis",
             forbidden_import="polyglot_sql",
             removed_dependency_name="sqlglot",
             expected_outside_import_paths=(),
             expected_removed_source_paths=(),
             expected_retired_path_exists=False,
-            expected_dependency_spec="polyglot-sql>=0.5.10",
+            retired_dependency_name="polyglot-sql",
         )
     ],
     ids=lambda case: case.description,
@@ -57,11 +57,11 @@ def test_given_runtime_source_when_checking_polyglot_boundary_then_only_analysis
     assert outside_import_paths == test_case.expected_outside_import_paths
     assert removed_source_paths == test_case.expected_removed_source_paths
     assert retired_path.exists() is test_case.expected_retired_path_exists
-    assert test_case.expected_dependency_spec in dependencies
     lock_contents: str = Path("uv.lock").read_text()
-
-    assert canonicalize_name(test_case.removed_dependency_name) not in tuple(
+    dependency_names: tuple[str, ...] = tuple(
         canonicalize_name(Requirement(dependency).name) for dependency in dependencies
     )
-    assert f'name = "{test_case.removed_dependency_name}"' not in lock_contents
-    assert test_case.expected_dependency_spec.split(">=")[0] in lock_contents
+
+    for dependency_name in (test_case.removed_dependency_name, test_case.retired_dependency_name):
+        assert canonicalize_name(dependency_name) not in dependency_names
+        assert f'name = "{dependency_name}"' not in lock_contents
