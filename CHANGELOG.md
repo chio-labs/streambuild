@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.42.0](https://github.com/sqlstack-io/sqltide/compare/v0.41.10...v0.42.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* install sqltide instead of streambuild and run sqt instead of stb. Rename streambuild_project.toml and streambuild_local.toml to sqltide_project.toml and sqltide_local.toml, STREAMBUILD_* environment variables to SQLTIDE_*, and streambuild imports to sqltide. Trusted proxies send X-SQLTide-User by default. Upgrade every writer of a target together.
+
+### Features
+
+* rename StreamBuild to SQLTide ([#266](https://github.com/sqlstack-io/sqltide/issues/266)) ([7e8c1be](https://github.com/sqlstack-io/sqltide/commit/7e8c1be202ce5cf559ff8cc5be4bb3719a8d95a1))
+
+
+### Maintenance
+
+* move repository links to the sqlstack-io organization ([#263](https://github.com/sqlstack-io/sqltide/issues/263)) ([3fbb1cc](https://github.com/sqlstack-io/sqltide/commit/3fbb1cc4591d9bb1b4c6f0b42f502de701bdfbbd))
+* stop tracking the root vitest cache ([#265](https://github.com/sqlstack-io/sqltide/issues/265)) ([3c2cd17](https://github.com/sqlstack-io/sqltide/commit/3c2cd17c6a3554e4ea349efdc61b5408099c3922))
+
 ## [0.41.10](https://github.com/chio-labs/sqltide/compare/v0.41.9...v0.41.10) (2026-10-26)
 
 
