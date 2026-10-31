@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.45.0](https://github.com/sqlstack-io/sqltide/compare/v0.44.0...v0.45.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* sqltide no longer depends on the polyglot-sql package.
+
+### Features
+
+* build the Polyglot SQL engine into the native extension ([#272](https://github.com/sqlstack-io/sqltide/issues/272)) ([afbaada](https://github.com/sqlstack-io/sqltide/commit/afbaadaa8d8f8b6ddc2ab6bf05884f621da46ab0))
+
 ## [0.44.0](https://github.com/sqlstack-io/sqltide/compare/v0.43.0...v0.44.0) (2026-10-31)
 
 
