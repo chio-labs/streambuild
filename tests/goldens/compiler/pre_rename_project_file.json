@@ -1,0 +1,10 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "pre_rename_project_file",
+  "stderr": [
+    "<project>/streambuild_project.toml is not supported. Rename it to sqltide_project.toml."
+  ],
+  "stdout": []
+}

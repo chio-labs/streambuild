@@ -1,0 +1,13 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "header_brace_mapping",
+  "stderr": [
+    "error [SQT-DISCOVERY-001] MODEL(...) in '<project>/pipelines/pl__orders/orders_enriched.sql' contains invalid SQLBuild header syntax: YAML-like brace mappings are not supported at position 36; use SQLBuild parenthesized mapping syntax",
+    "phase: discovery",
+    "resource: orders_enriched",
+    "--> <project>/pipelines/pl__orders/orders_enriched.sql:1:1"
+  ],
+  "stdout": []
+}

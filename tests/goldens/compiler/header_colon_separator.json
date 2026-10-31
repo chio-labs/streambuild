@@ -1,0 +1,13 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "header_colon_separator",
+  "stderr": [
+    "error [SQT-DISCOVERY-001] MODEL(...) in '<project>/pipelines/pl__orders/orders_enriched.sql' contains invalid SQLBuild header syntax: unexpected ':' after key 'engine'; use SQLBuild syntax 'engine value'",
+    "phase: discovery",
+    "resource: orders_enriched",
+    "--> <project>/pipelines/pl__orders/orders_enriched.sql:1:1"
+  ],
+  "stdout": []
+}

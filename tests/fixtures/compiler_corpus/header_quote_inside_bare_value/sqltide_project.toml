@@ -1,0 +1,8 @@
+name = "header_quote_inside_bare_value"
+default_target = "test"
+
+[defaults]
+pipeline_mode = "virtual"
+
+[targets.test]
+database = "analytics"

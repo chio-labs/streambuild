@@ -1,0 +1,13 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "header_missing_value",
+  "stderr": [
+    "error [SQT-DISCOVERY-001] MODEL(...) in '<project>/pipelines/pl__orders/orders_enriched.sql' contains invalid SQLBuild header syntax: unexpected token 'order_by' without a value; quote values with spaces",
+    "phase: discovery",
+    "resource: orders_enriched",
+    "--> <project>/pipelines/pl__orders/orders_enriched.sql:1:1"
+  ],
+  "stdout": []
+}
