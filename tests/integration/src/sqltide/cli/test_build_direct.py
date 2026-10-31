@@ -1119,7 +1119,7 @@ def test_given_drifted_source_settings_when_rebuilding_then_source_is_recreated_
     kafka_ddl_before: str = state_before["kafka__orders"][1]
     kafka_ddl_after: str = state_after["kafka__orders"][1]
     group_setting: str = (
-        f"kafka_group_name = 'sqltide_direct_build_test_orders_{clickhouse_database}'"
+        f"kafka_group_name = 'streambuild_direct_build_test_orders_{clickhouse_database}'"
     )
     assert (first_exit_code, plan_exit_code, rebuild_exit_code, replan_exit_code) == (0, 0, 0, 0)
     assert replan_payload["source_recreations"] == []
