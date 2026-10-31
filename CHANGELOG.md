@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/sqlstack-io/sqltide/compare/v0.45.0...v0.46.0) (2026-10-31)
+
+
+### Features
+
+* analyze model SQL trees in Rust ([#274](https://github.com/sqlstack-io/sqltide/issues/274)) ([27c919f](https://github.com/sqlstack-io/sqltide/commit/27c919f5bef3b29f6848dfd6e30636ceb904caba))
+
 ## [0.45.0](https://github.com/sqlstack-io/sqltide/compare/v0.44.0...v0.45.0) (2026-10-31)
 
 
