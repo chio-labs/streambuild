@@ -33,7 +33,7 @@ const FEED: RunEventFeed = {
 			event: 'run_started',
 			stepId: null,
 			phase: null,
-			displayCommand: 'stb build orders'
+			displayCommand: 'sqt build orders'
 		}
 	],
 	hasMore: false,
@@ -55,7 +55,7 @@ const OWNERSHIP: BuildFeed = {
 	running: true,
 	invocationId: 'run-1',
 	currentInvocationId: 'run-1',
-	command: 'stb build orders',
+	command: 'sqt build orders',
 	exitCode: null,
 	events: [],
 	stderr: '',
@@ -76,7 +76,7 @@ describe('run detail state', () => {
 		controller.start('run-1', true);
 		await vi.waitFor((): void => expect(controller.view.initialLoading).toBe(false));
 
-		expect(controller.view.commandLine).toBe('stb build orders');
+		expect(controller.view.commandLine).toBe('sqt build orders');
 		expect(controller.view.events).toEqual(FEED.events);
 		expect(controller.view.statementProgress).toEqual(FEED.statementProgress);
 		expect(mocks.schedule).toHaveBeenCalledWith(1_200);

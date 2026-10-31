@@ -63,7 +63,7 @@
 </script>
 
 <svelte:head>
-	<title>{title} · StreamBuild</title>
+	<title>{title} · SQLTide</title>
 </svelte:head>
 
 <div class="flex h-[54px] shrink-0 items-center gap-2 border-b border-border px-3 sm:gap-3.5 sm:px-[18px]">

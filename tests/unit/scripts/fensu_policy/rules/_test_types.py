@@ -12,4 +12,4 @@ class CustomRuleTestCase:
     expected_dependency_count: int = 0
     files: tuple[RuleFile, ...] = ()
     scope: str = "root"
-    scope_root: str | None = "src/streambuild"
+    scope_root: str | None = "src/sqltide"

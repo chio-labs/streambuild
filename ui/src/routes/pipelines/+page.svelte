@@ -32,7 +32,7 @@
 	let destructiveActionsOpen = $state<boolean>(false);
 	let showInactivePipelines = $state<boolean>(false);
 
-	// A pipeline is the project's real top-level unit: `stb discover` returns
+	// A pipeline is the project's real top-level unit: `sqt discover` returns
 	// nothing but pipeline names, and `pipeline:<name>` is one of only two
 	// selector forms. It is not a folder convention.
 	const rows = $derived(

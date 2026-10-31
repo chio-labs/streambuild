@@ -5,11 +5,11 @@ import type { BuildCommandParts } from '$lib/plan-view/types';
 import type { Plan, Selector } from '$lib/planning/types';
 
 function directPlan(): Plan {
-	return { command: 'stb build', deploymentId: null, mode: 'direct' } as unknown as Plan;
+	return { command: 'sqt build', deploymentId: null, mode: 'direct' } as unknown as Plan;
 }
 
 function virtualPlan(deploymentId: string): Plan {
-	return { command: 'stb build', deploymentId, mode: 'virtual' } as unknown as Plan;
+	return { command: 'sqt build', deploymentId, mode: 'virtual' } as unknown as Plan;
 }
 
 function parts(overrides: Partial<BuildCommandParts>): BuildCommandParts {
@@ -27,7 +27,7 @@ function parts(overrides: Partial<BuildCommandParts>): BuildCommandParts {
 
 describe('build plan command', () => {
 	it('given no selection when built then it names an all-models direct build', () => {
-		expect(buildPlanCommand(parts({}))).toBe('stb build');
+		expect(buildPlanCommand(parts({}))).toBe('sqt build');
 	});
 
 	it('given model and pipeline selectors when built then each becomes a --select token', () => {
@@ -37,7 +37,7 @@ describe('build plan command', () => {
 		];
 
 		expect(buildPlanCommand(parts({ selectors }))).toBe(
-			'stb build --select orders pipeline:pl__payments'
+			'sqt build --select orders pipeline:pl__payments'
 		);
 	});
 
@@ -49,7 +49,7 @@ describe('build plan command', () => {
 			})
 		);
 
-		expect(built).toBe('stb build --select orders --start-time 2026-08-10T12:00:00Z');
+		expect(built).toBe('sqt build --select orders --start-time 2026-08-10T12:00:00Z');
 	});
 
 	it('given a resolved virtual plan when built then its deployment id is appended', () => {
@@ -60,7 +60,7 @@ describe('build plan command', () => {
 			})
 		);
 
-		expect(built).toBe('stb build --select orders --deployment-id 20260811T120000Z_plan');
+		expect(built).toBe('sqt build --select orders --deployment-id 20260811T120000Z_plan');
 	});
 
 	it('given a re-plan still in flight when built then the stale deployment id is withheld', () => {
@@ -72,7 +72,7 @@ describe('build plan command', () => {
 			})
 		);
 
-		expect(built).toBe('stb build --select orders');
+		expect(built).toBe('sqt build --select orders');
 	});
 
 	it('given a resolved direct plan when built then no deployment id is emitted', () => {
@@ -80,7 +80,7 @@ describe('build plan command', () => {
 			parts({ selectors: [{ kind: 'model', name: 'orders' }], plan: directPlan() })
 		);
 
-		expect(built).toBe('stb build --select orders');
+		expect(built).toBe('sqt build --select orders');
 	});
 
 	it('given accepted confirmations when built then each trails as a --confirm flag', () => {
@@ -92,7 +92,7 @@ describe('build plan command', () => {
 		);
 
 		expect(built).toBe(
-			'stb build --select orders --confirm drop-orders --confirm drop-lineitems'
+			'sqt build --select orders --confirm drop-orders --confirm drop-lineitems'
 		);
 	});
 
@@ -104,7 +104,7 @@ describe('build plan command', () => {
 					includeMissingUpstream: true
 				})
 			)
-		).toBe('stb build --changed --include-missing-upstream');
+		).toBe('sqt build --changed --include-missing-upstream');
 	});
 
 	it('given changed mode and stale selectors when built then changed mode wins', () => {
@@ -115,6 +115,6 @@ describe('build plan command', () => {
 					changed: true
 				})
 			)
-		).toBe('stb build --changed');
+		).toBe('sqt build --changed');
 	});
 });

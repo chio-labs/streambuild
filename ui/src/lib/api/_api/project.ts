@@ -9,7 +9,7 @@ export async function requestDefinitionsPayload(
 	versionKey?: string,
 	signal?: AbortSignal
 ): Promise<Record<string, unknown>> {
-	const cacheKey: string | null = versionKey ? `streambuild:definitions:${versionKey}` : null;
+	const cacheKey: string | null = versionKey ? `sqltide:definitions:${versionKey}` : null;
 	let cached: Record<string, unknown> | null = null;
 	if (cacheKey !== null && typeof sessionStorage !== 'undefined') {
 		try {
@@ -41,7 +41,7 @@ export async function requestDefinitionsPayload(
 function pruneDefinitionsCache(currentKey: string): void {
 	for (let index: number = sessionStorage.length - 1; index >= 0; index -= 1) {
 		const key: string | null = sessionStorage.key(index);
-		if (key?.startsWith('streambuild:definitions:') && key !== currentKey) {
+		if (key?.startsWith('sqltide:definitions:') && key !== currentKey) {
 			sessionStorage.removeItem(key);
 		}
 	}

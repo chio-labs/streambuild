@@ -15,7 +15,7 @@
 	const auth = getAuth();
 
 	// Two sections only. There is no scheduler — Runs is recorded CLI invocation
-	// history from `_streambuild_invocations`, not orchestration.
+	// history from `_sqltide_invocations`, not orchestration.
 	const footerItems: SidebarNavItem[] = $derived([
 		{ label: 'Status', href: '/status', icon: ServerIcon },
 		{ label: 'Settings', href: '/settings', icon: SettingsIcon },
@@ -42,13 +42,13 @@
 	class="bg-sidebar flex h-screen w-14 shrink-0 flex-col border-r border-[var(--sidebar-border)] px-1 py-3 md:w-56 md:px-2.5 md:py-3.5"
 >
 	<div class="flex items-center justify-center gap-2 px-1 pb-3 md:justify-start md:px-2 md:pb-4">
-		<!-- Official StreamBuild wordmark from the docs repo. Two files rather than
+		<!-- Official SQLTide wordmark from the docs repo. Two files rather than
 		     one recoloured asset, because the mark's yellow stays constant while the
 		     wordmark inverts. -->
 		<span class="font-display text-[13px] font-bold md:hidden">SB</span>
 		<span class="hidden md:contents">
-			<img src="/logo-on-dark.png" alt="StreamBuild" class="logo-dark h-[24px] w-auto" />
-			<img src="/logo-on-light.png" alt="StreamBuild" class="logo-light h-[24px] w-auto" />
+			<img src="/logo-on-dark.png" alt="SQLTide" class="logo-dark h-[24px] w-auto" />
+			<img src="/logo-on-light.png" alt="SQLTide" class="logo-light h-[24px] w-auto" />
 		</span>
 		{#if app.status?.toolVersion}
 			<span class="text-[var(--sb-text-faint)] ml-auto hidden font-mono text-[10px] tracking-wide md:inline"

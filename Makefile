@@ -67,8 +67,8 @@ ui-install:
 
 ui-build:
 	cd ui && npm run build
-	rm -rf src/streambuild/dev_server/static
-	cp -r ui/build src/streambuild/dev_server/static
+	rm -rf src/sqltide/dev_server/static
+	cp -r ui/build src/sqltide/dev_server/static
 
 
 ui-verify:

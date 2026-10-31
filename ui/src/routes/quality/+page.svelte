@@ -20,7 +20,7 @@
 	const project: Project = getProject();
 
 	// Audits and tests are RUNNABLE here even though the UI is read-only: in
-	// StreamBuild both go through client.query() and never the mutation gateway.
+	// SQLTide both go through client.query() and never the mutation gateway.
 	// Only `build` writes.
 	const audits = $derived(auditCounts(project.audits));
 	const tests = $derived(testCounts(project.tests));

@@ -51,4 +51,4 @@ Release Please derives version bumps and changelog sections from the squash comm
 | `chore` | Maintenance | patch |
 | `ci`, `test` | hidden | none by themselves |
 
-Use `!` and a `BREAKING CHANGE:` footer for breaking behavior. StreamBuild blocks automatic `1.0.0` publication, so crossing that boundary remains a manual decision.
+Use `!` and a `BREAKING CHANGE:` footer for breaking behavior. SQLTide blocks automatic `1.0.0` publication, so crossing that boundary remains a manual decision.

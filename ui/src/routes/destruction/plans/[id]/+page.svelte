@@ -88,7 +88,7 @@
 					</div>
 					{#if plan.dropSizePolicyObserved && plan.dropSizeOverrideBytes !== null}
 						<div class="text-[var(--sb-text-faint)] mt-1 font-mono text-[9.5px]">
-							{displayBytes(plan.dropSizeOverrideBytes)} StreamBuild override · {plan.dropSizeServerLimitBytes === null ? 'server unlimited' : `${displayBytes(plan.dropSizeServerLimitBytes)} server default`}
+							{displayBytes(plan.dropSizeOverrideBytes)} SQLTide override · {plan.dropSizeServerLimitBytes === null ? 'server unlimited' : `${displayBytes(plan.dropSizeServerLimitBytes)} server default`}
 						</div>
 					{/if}
 					<div class="text-[var(--sb-text-faint)] mt-1 font-mono text-[9.5px]">{displayBytes(plan.estimatedBytes)} estimated</div>
@@ -230,7 +230,7 @@
 					<ShieldAlertIcon size={16} class="mt-0.5 shrink-0 text-destructive" />
 					<div>
 						<h3 id="irreversible-heading" class="text-[13px] font-semibold text-destructive">This operation is irreversible</h3>
-						<p class="mt-1 text-[11.5px] leading-relaxed">Execution permanently drops the resources listed above from <code>{plan.database}</code>. StreamBuild does not provide rollback for destruction operations.</p>
+						<p class="mt-1 text-[11.5px] leading-relaxed">Execution permanently drops the resources listed above from <code>{plan.database}</code>. SQLTide does not provide rollback for destruction operations.</p>
 						<p class="mt-2 text-[11.5px] leading-relaxed">Authored project definitions remain. A later build can recreate resources still defined in the project, but it cannot restore their dropped data.</p>
 					</div>
 				</div>

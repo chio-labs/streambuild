@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sqlstack-io/streambuild/main/.github/streambuild-logo-dark.png" alt="StreamBuild" width="100%">
+  <img src="https://raw.githubusercontent.com/sqlstack-io/sqltide/main/.github/sqltide-logo-dark.png" alt="SQLTide" width="100%">
 </p>
 
 <p align="center">
@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/v/streambuild" alt="PyPI"></a>
-  <a href="https://github.com/sqlstack-io/streambuild/actions/workflows/verify.yml"><img src="https://github.com/sqlstack-io/streambuild/actions/workflows/verify.yml/badge.svg" alt="Verification"></a>
-  <a href="https://pypi.org/project/streambuild/"><img src="https://img.shields.io/pypi/pyversions/streambuild" alt="Python versions"></a>
-  <a href="https://github.com/sqlstack-io/streambuild/blob/main/LICENSE"><img src="https://img.shields.io/github/license/sqlstack-io/streambuild" alt="License"></a>
+  <a href="https://pypi.org/project/sqltide/"><img src="https://img.shields.io/pypi/v/sqltide" alt="PyPI"></a>
+  <a href="https://github.com/sqlstack-io/sqltide/actions/workflows/verify.yml"><img src="https://github.com/sqlstack-io/sqltide/actions/workflows/verify.yml/badge.svg" alt="Verification"></a>
+  <a href="https://pypi.org/project/sqltide/"><img src="https://img.shields.io/pypi/pyversions/sqltide" alt="Python versions"></a>
+  <a href="https://github.com/sqlstack-io/sqltide/blob/main/LICENSE"><img src="https://img.shields.io/github/license/sqlstack-io/sqltide" alt="License"></a>
 </p>
 
-StreamBuild lets data teams define continuously updating ClickHouse pipelines in typed SQL, inspect
+SQLTide lets data teams define continuously updating ClickHouse pipelines in typed SQL, inspect
 the affected graph before making changes, and rebuild it from retained streaming history when logic
 changes.
 
@@ -25,7 +25,7 @@ It brings dbt-style authoring and deployment workflows to streaming workloads:
 - **Staged deployments** support review, audit, promotion, and graph-level rollback.
 - **Built-in observability** covers sources, lag, lineage, runs, quality checks, and sensors.
 
-StreamBuild currently targets ClickHouse and supports managed Kafka landing or adopted external
+SQLTide currently targets ClickHouse and supports managed Kafka landing or adopted external
 stream tables.
 
 ## Install
@@ -33,9 +33,27 @@ stream tables.
 Requires Python 3.12 or newer.
 
 ```bash
-pip install streambuild
-stb --help
+pip install sqltide
+sqt --help
 ```
+
+## Upgrading from StreamBuild
+
+SQLTide is the new name for StreamBuild. Install `sqltide` in place of `streambuild`; the CLI is now
+`sqt`. Names you author or configure change without a compatibility layer:
+
+- Rename `streambuild_project.toml` and `streambuild_local.toml` to `sqltide_project.toml` and
+  `sqltide_local.toml`, and `STREAMBUILD_*` environment variables to `SQLTIDE_*`.
+- Import `sqltide` instead of `streambuild` in macros, sensors, and providers.
+- Trusted proxies send `X-SQLTide-User` by default, and browser sessions sign in again.
+- Ignore `.sqltide/` instead of `.streambuild/` in your project's `.gitignore`.
+
+State that SQLTide stores carries over automatically. The first `sqt` command against a target renames
+its `_streambuild_*` metadata tables to `_sqltide_*`, and refuses while a StreamBuild run still holds
+the target lock. Accounts in `.streambuild/` or a shared control-store database are renamed the same
+way. Managed Kafka sources keep their existing consumer groups, so ingestion resumes from committed
+offsets. Upgrade every machine and CI job that writes to a target together: StreamBuild cannot read a
+renamed target.
 
 ## Quickstart
 
@@ -43,8 +61,8 @@ The included deterministic commerce demo runs locally with Redpanda and ClickHou
 Docker with Compose, Node.js 20.19 or newer, npm, and [`uv`](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/sqlstack-io/streambuild.git
-cd streambuild
+git clone https://github.com/sqlstack-io/sqltide.git
+cd sqltide
 make ui-install ui-build
 uv tool install --editable .
 
@@ -73,14 +91,14 @@ Kafka or an adopted stream table
  plan -> build or stage -> audit -> promote
 ```
 
-StreamBuild follows `__source()` and `__ref()` dependencies to compile the model graph. Live
+SQLTide follows `__source()` and `__ref()` dependencies to compile the model graph. Live
 materialized views keep it current; retained replay columns let a later build reconstruct the
 affected scope after SQL changes.
 
 ## Project
 
 ```text
-streambuild_project.toml
+sqltide_project.toml
 sources/
   orders.yml
 macros/
@@ -135,7 +153,7 @@ database = "analytics"
 ```
 
 Developer-specific target and connection overrides belong in the gitignored
-`streambuild_local.toml`.
+`sqltide_local.toml`.
 
 ## Sources
 
@@ -151,7 +169,7 @@ sources:
       mode: offsets
 ```
 
-StreamBuild owns managed Kafka landing objects. It validates but never mutates adopted source
+SQLTide owns managed Kafka landing objects. It validates but never mutates adopted source
 tables. See the [pipeline documentation](https://docs.streambuild.dev/concepts/pipelines)
 for adopted stream-table configuration.
 
@@ -210,23 +228,23 @@ Python functions under `macros/` are available in model, test, and audit SQL as 
 ## Workflow
 
 ```bash
-stb discover                 # inspect authored resources
-stb compile                  # offline validation and artifacts
-stb plan                     # read-only warehouse plan
-stb build                    # confirm and execute
-stb test
-stb audit
-stb dev                      # local UI at 127.0.0.1:8000
+sqt discover                 # inspect authored resources
+sqt compile                  # offline validation and artifacts
+sqt plan                     # read-only warehouse plan
+sqt build                    # confirm and execute
+sqt test
+sqt audit
+sqt dev                      # local UI at 127.0.0.1:8000
 ```
 
 Select a model or pipeline with repeatable selectors:
 
 ```bash
-stb plan --select pipeline:pl__orders
-stb build --select order_totals --start-time 2026-08-01T00:00:00Z
+sqt plan --select pipeline:pl__orders
+sqt build --select order_totals --start-time 2026-08-01T00:00:00Z
 ```
 
-`stb compile` is offline. `stb plan` reads warehouse state but cannot mutate it. `stb build` replans
+`sqt compile` is offline. `sqt plan` reads warehouse state but cannot mutate it. `sqt build` replans
 immediately before execution so an approved command never relies on a stale plan.
 
 ## Build modes
@@ -242,13 +260,13 @@ immediately before execution so an approved command never relies on a stale plan
 Set `pipeline_mode = "virtual"` project-wide or `mode = "virtual"` in `pipeline.toml`.
 
 ```bash
-stb build
-stb deployment list
-stb deployment show <deployment-id>
-stb deployment diff <deployment-id>
-stb deployment audit <deployment-id>
-stb deployment promote <deployment-id>
-stb deployment rollback --previous
+sqt build
+sqt deployment list
+sqt deployment show <deployment-id>
+sqt deployment diff <deployment-id>
+sqt deployment audit <deployment-id>
+sqt deployment promote <deployment-id>
+sqt deployment rollback --previous
 ```
 
 Promotion and rollback switch stable views one relation at a time. Rollback restores a retained
@@ -256,14 +274,14 @@ publication's bindings, not a historical data snapshot.
 
 ## Destructive Operations
 
-StreamBuild can destroy selected deployed pipelines while retaining their authored definitions,
+SQLTide can destroy selected deployed pipelines while retaining their authored definitions,
 managed sources, and replay data. A target reset additionally removes managed source and replay
-relations, but preserves every `_streambuild_*` metadata table, account and authorization state,
+relations, but preserves every `_sqltide_*` metadata table, account and authorization state,
 Kafka offsets, and the reset's own run evidence.
 
 ```bash
-stb destroy --target uat --select pipeline:pl__orders pipeline:pl__reporting
-stb reset-target --target uat
+sqt destroy --target uat --select pipeline:pl__orders pipeline:pl__reporting
+sqt reset-target --target uat
 ```
 
 Both commands require an interactive terminal. They print a frozen impact plan, require a separate
@@ -271,7 +289,7 @@ review decision, and then prompt for exact pipeline-name challenges from that pl
 non-interactive approval option or administrator bypass. Execution locks the target, replans, and
 rejects manifest or warehouse drift before the first drop. Unselected downstream pipelines block a
 plan rather than being silently included. Standalone CLI execution also requires the local OS user
-to be an active built-in administrator in the StreamBuild control store.
+to be an active built-in administrator in the SQLTide control store.
 
 UI plans and their review state are durable, actor-bound, and atomically single-use across server
 restarts and workers. Standalone CLI plans use the same durable control-store representation.
@@ -289,14 +307,14 @@ max_table_size_to_drop = "100GiB"
 
 `max_table_size_to_drop` is an optional committed, target-scoped ClickHouse safety ceiling for
 each relation, not the aggregate plan size. It must be a finite positive byte-size string and cannot
-be overridden from `streambuild_local.toml`. StreamBuild applies it only to that target's reviewed
+be overridden from `sqltide_local.toml`. SQLTide applies it only to that target's reviewed
 destruction `DROP` statements, freezes the override and server default into each plan,
-and still relies on ClickHouse to enforce the ceiling when every `DROP` executes. Other StreamBuild
+and still relies on ClickHouse to enforce the ceiling when every `DROP` executes. Other SQLTide
 queries continue to use the target connection and server defaults.
 
 Ownership generations, external dependants in every ClickHouse database, and target/database drift
 are checked before execution. Historical deployment metadata alone never authorizes deletion of a
-live same-name relation. Target mutation locks remain fail-closed after a crashed owner; StreamBuild
+live same-name relation. Target mutation locks remain fail-closed after a crashed owner; SQLTide
 does not use an age-based automatic takeover that could overlap a long-running ClickHouse query.
 
 The Pipelines UI exposes the same planner and executor through multi-selection and the dedicated
@@ -308,9 +326,9 @@ closure are never replayed.
 
 ## Development UI
 
-`stb dev` serves a warehouse-backed interface for one resolved project and target. It provides:
+`sqt dev` serves a warehouse-backed interface for one resolved project and target. It provides:
 
-![StreamBuild lineage view showing the orders demo pipeline](https://raw.githubusercontent.com/sqlstack-io/streambuild/main/.github/streambuild-ui.png)
+![SQLTide lineage view showing the orders demo pipeline](https://raw.githubusercontent.com/sqlstack-io/sqltide/main/.github/sqltide-ui.png)
 
 - overview, lineage, pipeline, catalog, source, topic, and message inspection
 - connected plan previews and protected-pipeline confirmation
@@ -330,8 +348,8 @@ operational configuration.
 
 ## Guarantees
 
-- `stb compile` is connection-free and writes disposable artifacts under `target/`.
-- `stb plan` is read-only; `stb build` always replans against current warehouse state.
+- `sqt compile` is connection-free and writes disposable artifacts under `target/`.
+- `sqt plan` is read-only; `sqt build` always replans against current warehouse state.
 - Lifecycle state is append-only metadata in the selected target database.
 - Failed or cancelled builds are rerun, never resumed from copied SQL artifacts.
 - Workflow statements execute serially to avoid unbounded ClickHouse memory pressure.

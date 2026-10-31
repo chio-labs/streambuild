@@ -70,7 +70,7 @@
 
 				<ModelDrift drift={model.live.semanticDrift} />
 
-				<!-- All four artifacts StreamBuild produces. The MV DDL in particular
+				<!-- All four artifacts SQLTide produces. The MV DDL in particular
 				     cannot be seen from the CLI at all. -->
 				<div>
 					<div

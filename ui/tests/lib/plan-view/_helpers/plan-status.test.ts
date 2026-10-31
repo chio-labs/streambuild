@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { planStatusFor } from '$lib/plan-view/_helpers/plan-status';
 import type { Plan } from '$lib/planning/types';
 
-const PLAN: Plan = { command: 'stb build', deploymentId: null, mode: 'direct' } as unknown as Plan;
+const PLAN: Plan = { command: 'sqt build', deploymentId: null, mode: 'direct' } as unknown as Plan;
 
 describe('plan status', () => {
 	it('given a failed request when reducing then the status is error even with an earlier plan', () => {

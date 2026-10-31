@@ -10,7 +10,7 @@ from tests.unit.scripts.distribution.main._test_types import (
 )
 from tests.unit.scripts.distribution.main.helpers import write_wheel
 
-_WHEEL_NAME: str = "streambuild-0.8.1-py3-none-any.whl"
+_WHEEL_NAME: str = "sqltide-0.8.1-py3-none-any.whl"
 
 
 @pytest.mark.parametrize(
@@ -19,8 +19,8 @@ _WHEEL_NAME: str = "streambuild-0.8.1-py3-none-any.whl"
         ValidWheelAssetsTestCase(
             description="wheel contains the development UI entry point and application bundle",
             archive_names=(
-                "streambuild/dev_server/static/index.html",
-                "streambuild/dev_server/static/_app/immutable/entry/start.js",
+                "sqltide/dev_server/static/index.html",
+                "sqltide/dev_server/static/_app/immutable/entry/start.js",
             ),
             expected_exit_code=0,
         )
@@ -46,12 +46,12 @@ def test_given_complete_wheel_when_verifying_assets_then_returns_success(
     [
         InvalidWheelAssetsTestCase(
             description="wheel omits the development UI entry point",
-            archive_names=("streambuild/dev_server/static/_app/immutable/entry/start.js",),
+            archive_names=("sqltide/dev_server/static/_app/immutable/entry/start.js",),
             expected_message_fragment="missing required UI asset",
         ),
         InvalidWheelAssetsTestCase(
             description="wheel omits the development UI application bundle",
-            archive_names=("streambuild/dev_server/static/index.html",),
+            archive_names=("sqltide/dev_server/static/index.html",),
             expected_message_fragment="missing the UI application bundle",
         ),
     ],

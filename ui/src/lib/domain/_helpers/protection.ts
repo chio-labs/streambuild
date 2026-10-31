@@ -1,6 +1,6 @@
 import type { Pipeline, Project } from '$lib/domain/types';
 
-/** Resolve protected pipelines touched by the same downstream closure as `stb build`. */
+/** Resolve protected pipelines touched by the same downstream closure as `sqt build`. */
 export function protectedPipelinesForBuild(project: Project, selectors: string[]): Pipeline[] {
 	const executionModels = new Set<string>();
 	if (selectors.length === 0) {

@@ -14,12 +14,12 @@ from scripts.fensu_policy.constants import (
 
 
 @rule(
-    code="XSTB003",
+    code="XSQT003",
     family=Family.CUSTOM,
     slug="sql-analysis-import-ownership",
     message="SQL analysis engines must remain inside their migration boundary",
     remediation=(
-        "Import Polyglot only from src/streambuild/compiler/sql_analysis/, and do not "
+        "Import Polyglot only from src/sqltide/compiler/sql_analysis/, and do not "
         "reintroduce a removed SQL analysis engine."
     ),
 )

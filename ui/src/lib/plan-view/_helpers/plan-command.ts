@@ -4,7 +4,7 @@ import type { ReplayWindow, Selector } from '$lib/planning/types';
 
 export function parsePlanCommand(command: string): ParsedPlanCommand {
 	const tokens: string[] = command
-		.replace(/^\s*(?:\$\s*)?(?:stb|streambuild)\s+(?:build|plan)\s*/, '')
+		.replace(/^\s*(?:\$\s*)?(?:sqt|sqltide)\s+(?:build|plan)\s*/, '')
 		.split(/\s+/)
 		.filter(Boolean);
 	const selectors: Selector[] = [];

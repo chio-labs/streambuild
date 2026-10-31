@@ -19,6 +19,6 @@ describe('authenticated fetch', () => {
 		await requestWithAuthentication('/api/example', { method: 'POST' });
 
 		const requestInit: RequestInit = fetchMock.mock.calls[0][1];
-		expect(new Headers(requestInit.headers).get('X-StreamBuild-CSRF')).toBe('trusted-proxy');
+		expect(new Headers(requestInit.headers).get('X-SQLTide-CSRF')).toBe('trusted-proxy');
 	});
 });

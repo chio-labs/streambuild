@@ -1,0 +1,404 @@
+import re
+from pathlib import Path
+from typing import cast
+
+import pytest
+from playwright.sync_api import FloatRect, Locator, Page, Route, expect
+
+from tests.e2e.src.sqltide.dev_server._test_types import (
+    DestructionBrowserE2ETestCase,
+)
+
+
+class DestructionRouteRecorder:
+    def __init__(self, *, plan_payload: dict[str, object], invocation_id: str) -> None:
+        self.plan_payload: dict[str, object] = plan_payload
+        self.invocation_id: str = invocation_id
+        self.request_bodies: list[dict[str, object]] = []
+        self.reviewed_at: str | None = None
+        self.read_count: int = 0
+        self.recovery_request_bodies: list[object | None] = []
+        self.statement_read_count: int = 0
+
+    def fulfill_plan(self, route: Route) -> None:
+        self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
+        route.fulfill(json=self.plan_payload)
+
+    def fulfill_review(self, route: Route) -> None:
+        self.request_bodies.append({})
+        self.reviewed_at = "2026-08-24T12:01:00+00:00"
+        route.fulfill(json={**self.plan_payload, "reviewedAt": self.reviewed_at})
+
+    def fulfill_read(self, route: Route) -> None:
+        self.read_count += 1
+        route.fulfill(json={**self.plan_payload, "reviewedAt": self.reviewed_at})
+
+    def fulfill_execution(self, route: Route) -> None:
+        self.request_bodies.append(cast(dict[str, object], route.request.post_data_json))
+        route.fulfill(status=202, json={"invocationId": self.invocation_id, "status": "starting"})
+
+    def fulfill_run_events(self, route: Route) -> None:
+        route.fulfill(
+            json={
+                "found": True,
+                "events": [
+                    {
+                        "sequence": 1,
+                        "emittedAt": "2026-08-24 12:01:00",
+                        "event": "run_started",
+                        "stepId": None,
+                        "phase": None,
+                        "command": "destroy pipelines",
+                        "mode": "destructive",
+                        "displayCommand": "sqt destroy pipelines",
+                        "totalStatements": 31,
+                    },
+                    {
+                        "sequence": 2,
+                        "emittedAt": "2026-08-24 12:02:00",
+                        "event": "run_completed",
+                        "stepId": None,
+                        "phase": None,
+                        "outcome": "failed",
+                        "exitCode": 1,
+                        "errorMessage": "relation exceeds configured drop limit",
+                    },
+                ],
+                "hasMore": False,
+                "status": "failed",
+                "lastSignalAt": "2026-08-24 12:02:00",
+                "lastSignalAgeSeconds": 0,
+                "statementProgress": None,
+            }
+        )
+
+    def fulfill_runs(self, route: Route) -> None:
+        route.fulfill(
+            json=[
+                {
+                    "invocationId": self.invocation_id,
+                    "command": "destroy pipelines",
+                    "displayCommand": "sqt destroy pipelines",
+                    "mode": "destructive",
+                    "status": "failed",
+                    "outcome": "failed",
+                    "exitCode": 1,
+                    "startedAt": "2026-08-24 12:01:00",
+                    "completedAt": "2026-08-24 12:02:00",
+                    "lastSignalAt": "2026-08-24 12:02:00",
+                    "lastSignalAgeSeconds": 0,
+                    "durationMs": 60_000,
+                    "selectedNodeCount": 1,
+                    "errorMessage": "relation exceeds configured drop limit",
+                    "toolVersion": "0.28.4",
+                    "lastActivity": "run_completed",
+                    "completedOperationCount": 1,
+                    "totalStatements": 31,
+                    "currentStep": None,
+                    "auditSummary": None,
+                }
+            ]
+        )
+
+    def fulfill_recovery(self, route: Route) -> None:
+        self.recovery_request_bodies.append(route.request.post_data_json)
+        route.fulfill(json={**self.plan_payload, "planId": "recovery-plan-1", "reviewedAt": None})
+
+    def fulfill_recovery_read(self, route: Route) -> None:
+        route.fulfill(json={**self.plan_payload, "planId": "recovery-plan-1", "reviewedAt": None})
+
+    def fulfill_statement_read(self, route: Route) -> None:
+        self.statement_read_count += 1
+        route.fulfill(status=500, json={"detail": "old SQL must not be read for recovery"})
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionBrowserE2ETestCase(
+            description="typed destruction gates preserve exact request boundaries",
+            pipeline_name="pl__moving_events",
+            expected_model_name="moving_orders",
+            expected_relation_name="tbl__moving_orders",
+            expected_invocation_id="destroy-run-1",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_selected_pipeline_when_confirming_destruction_then_both_gates_are_required(
+    test_case: DestructionBrowserE2ETestCase,
+    running_catalog_pipeline_browser_server: tuple[str, dict[str, object], str, Path],
+    page: Page,
+) -> None:
+    base_url: str = running_catalog_pipeline_browser_server[0]
+    plan_payload: dict[str, object] = {
+        "planId": "plan-1",
+        "planFingerprint": "a" * 64,
+        "operation": "destroy_pipelines",
+        "target": "test",
+        "database": "analytics",
+        "selectedPipelines": [test_case.pipeline_name],
+        "includedDependentPipelines": [],
+        "affectedPipelines": [test_case.pipeline_name],
+        "requiredDependentPipelines": [],
+        "blocked": False,
+        "models": [test_case.expected_model_name, *(f"model_{index:03d}" for index in range(60))],
+        "resources": [
+            {
+                "name": test_case.expected_relation_name,
+                "kind": "table",
+                "logicalName": test_case.expected_model_name,
+                "pipelineName": test_case.pipeline_name,
+                "exists": True,
+                "bytes": 4096,
+                "activeParts": 2,
+            },
+            *(
+                {
+                    "name": f"tbl__resource_{index:03d}",
+                    "kind": "table",
+                    "logicalName": f"resource_{index:03d}",
+                    "pipelineName": test_case.pipeline_name,
+                    "exists": True,
+                    "bytes": 0,
+                    "activeParts": 0,
+                }
+                for index in range(1, 31)
+            ),
+        ],
+        "managedSourcesIncluded": False,
+        "retainedReplayDataIncluded": False,
+        "estimatedBytes": 4096,
+        "dropSizeLimitBytes": 107_374_182_400,
+        "dropSizeServerLimitBytes": 50_000_000_000,
+        "dropSizeOverrideBytes": 107_374_182_400,
+        "dropSizePolicyObserved": True,
+        "challengeValues": [test_case.pipeline_name],
+        "expiresAt": "2099-08-24T12:15:00+00:00",
+        "reviewedAt": None,
+    }
+    routes: DestructionRouteRecorder = DestructionRouteRecorder(
+        plan_payload=plan_payload,
+        invocation_id=test_case.expected_invocation_id,
+    )
+
+    page.route("**/api/destruction/plans", routes.fulfill_plan)
+    page.route("**/api/destruction/plans/plan-1", routes.fulfill_read)
+    page.route("**/api/destruction/plans/plan-1/review", routes.fulfill_review)
+    page.route("**/api/destruction/plans/plan-1/execute", routes.fulfill_execution)
+    page.route(
+        f"**/api/runs/{test_case.expected_invocation_id}/events?after=*",
+        routes.fulfill_run_events,
+    )
+    page.route("**/api/runs", routes.fulfill_runs)
+    page.route(
+        f"**/api/runs/{test_case.expected_invocation_id}/recovery-plan",
+        routes.fulfill_recovery,
+    )
+    page.route("**/api/destruction/plans/recovery-plan-1", routes.fulfill_recovery_read)
+    page.route("**/api/runs/*/statements/*", routes.fulfill_statement_read)
+    inactive_pipeline_name: str = f"retired_{test_case.pipeline_name}"
+    page.route(
+        "**/api/destruction/pipelines/inactive",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=(
+                '{"pipelines":[{"name":"'
+                f"{inactive_pipeline_name}"
+                '","modelCount":2,"resourceCount":5,'
+                '"lastPublishedAt":"2026-08-23 10:00:00.000000"}]}'
+            ),
+        ),
+    )
+    page.set_viewport_size({"width": 1920, "height": 1080})
+    page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+    expect(page.get_by_role("button", name="Reset target", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name=re.compile(r"^Destroy"))).to_have_count(0)
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer: Locator = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text("Selected pipelines")
+    expect(drawer).to_contain_text("Entire target")
+    expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
+    reset_button: Locator = drawer.get_by_role("button", name="Review target reset", exact=True)
+    expect(reset_button).to_be_disabled()
+    drawer.get_by_label("Acknowledge entire target reset").click()
+    expect(reset_button).to_be_enabled()
+    drawer.get_by_role("button", name="Close destructive actions").click()
+
+    page.get_by_label("Show inactive pipelines").click()
+    inactive_selection: Locator = page.get_by_label(
+        f"Select inactive {inactive_pipeline_name} for destruction"
+    )
+    expect(inactive_selection).to_be_visible()
+    expect(page.get_by_text("retained manifest", exact=True)).to_be_visible()
+    inactive_selection.click()
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text(inactive_pipeline_name)
+    expect(drawer.get_by_role("button", name="Review target reset", exact=True)).to_be_disabled()
+    drawer.get_by_role("button", name="Close destructive actions").click()
+    inactive_selection.click()
+    page.get_by_label("Show inactive pipelines").click()
+
+    page.get_by_role("button", name=re.compile(r"^Virtual")).click()
+    expect(page.get_by_text("No pipelines match the current filters", exact=True)).to_be_visible()
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_have_count(0)
+    page.get_by_role("button", name=re.compile(r"^Direct")).click()
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_be_visible()
+
+    page.get_by_label(f"Select {test_case.pipeline_name} for an action").click()
+    page.get_by_role("button", name="Build (1)").click()
+    expect(page).to_have_url(f"{base_url}/plan?select=pipeline%3A{test_case.pipeline_name}")
+
+    page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+    page.get_by_label(f"Select {test_case.pipeline_name} for an action").click()
+    search: Locator = page.get_by_placeholder("Search pipelines…")
+    search.fill("no matching pipeline")
+    filter_summary: Locator = page.get_by_test_id("pipeline-filter-summary")
+    expect(filter_summary).to_contain_text("1 selected")
+    expect(filter_summary).to_contain_text("1 outside filter")
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_have_count(0)
+    search.fill(test_case.expected_relation_name)
+    expect(page.get_by_label(f"Select {test_case.pipeline_name} for an action")).to_be_visible()
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer = page.get_by_test_id("destructive-actions-drawer")
+    expect(drawer).to_contain_text("1 pipeline selected")
+    drawer.get_by_role("button", name="Review destroy plan", exact=True).click()
+    expect(page).to_have_url(f"{base_url}/destruction/plans/plan-1")
+    expect(page.get_by_text("Frozen pipeline closure")).to_be_visible()
+    expect(page.get_by_text(test_case.expected_relation_name, exact=True)).to_be_visible()
+    content_box: FloatRect | None = page.get_by_test_id("destruction-plan-content").bounding_box()
+    assert content_box is not None
+    assert content_box["width"] > 1600
+    expect(page.get_by_test_id("destruction-resource-row")).to_have_count(25)
+    expect(page.get_by_text("Showing 1-25 of 31 frozen resources", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Next resource page").click()
+    expect(page.get_by_test_id("destruction-resource-row")).to_have_count(6)
+    expect(page.get_by_text("tbl__resource_025", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Show all 61 models").click()
+    expect(page.get_by_text("model_059", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Show fewer models").click()
+    expect(page.get_by_text("model_059", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name="Review frozen plan")).to_be_enabled()
+    page.get_by_role("button", name="Review frozen plan").click()
+
+    challenge: Locator = page.get_by_label(f"Challenge 1: {test_case.pipeline_name}")
+    execute: Locator = page.get_by_role("button", name="Destroy pipelines", exact=True)
+    challenge.fill(f"{test_case.pipeline_name} ")
+    expect(execute).to_be_disabled()
+    challenge.fill(test_case.pipeline_name)
+    expect(execute).to_be_enabled()
+    page.reload(wait_until="domcontentloaded")
+
+    challenge = page.get_by_label(f"Challenge 1: {test_case.pipeline_name}")
+    execute = page.get_by_role("button", name="Destroy pipelines", exact=True)
+    expect(challenge).to_have_value("")
+    expect(execute).to_be_disabled()
+    challenge.fill(test_case.pipeline_name)
+    execute.click()
+
+    expect(page).to_have_url(f"{base_url}/runs/{test_case.expected_invocation_id}?live=1")
+    recovery: Locator = page.get_by_role("button", name="Create recovery plan")
+    expect(recovery).to_be_visible()
+    recovery.click()
+    expect(page).to_have_url(f"{base_url}/destruction/plans/recovery-plan-1")
+    expect(page.get_by_role("button", name="Review frozen plan")).to_be_visible()
+    assert routes.request_bodies == [
+        {
+            "operation": "destroy_pipelines",
+            "pipelineNames": [test_case.pipeline_name],
+            "includedDependentPipelineNames": [],
+        },
+        {},
+        {"responses": [test_case.pipeline_name]},
+    ]
+    assert routes.read_count == 2
+    assert routes.recovery_request_bodies == [None]
+    assert routes.statement_read_count == 0
+
+
+@pytest.mark.e2e
+@pytest.mark.browser
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        DestructionBrowserE2ETestCase(
+            description="target reset is available only inside the target-wide drawer section",
+            pipeline_name="pl__moving_events",
+            expected_model_name="moving_orders",
+            expected_relation_name="tbl__moving_orders",
+            expected_invocation_id="unused",
+        )
+    ],
+    ids=lambda case: case.description,
+)
+def test_given_reset_permission_when_opening_destructive_actions_then_reset_enters_review_flow(
+    test_case: DestructionBrowserE2ETestCase,
+    running_catalog_pipeline_browser_server: tuple[str, dict[str, object], str, Path],
+    page: Page,
+) -> None:
+    base_url: str = running_catalog_pipeline_browser_server[0]
+    reset_payload: dict[str, object] = {
+        "planId": "reset-plan-1",
+        "planFingerprint": "b" * 64,
+        "operation": "reset_target",
+        "target": "test",
+        "database": "analytics",
+        "selectedPipelines": [],
+        "includedDependentPipelines": [],
+        "affectedPipelines": [test_case.pipeline_name],
+        "requiredDependentPipelines": [],
+        "blocked": False,
+        "models": [test_case.expected_model_name],
+        "resources": [],
+        "managedSourcesIncluded": True,
+        "retainedReplayDataIncluded": True,
+        "estimatedBytes": 0,
+        "dropSizeLimitBytes": 107_374_182_400,
+        "dropSizeServerLimitBytes": 50_000_000_000,
+        "dropSizeOverrideBytes": 107_374_182_400,
+        "dropSizePolicyObserved": True,
+        "challengeValues": ["RESET test"],
+        "expiresAt": "2099-08-24T12:15:00+00:00",
+        "reviewedAt": None,
+    }
+    routes: DestructionRouteRecorder = DestructionRouteRecorder(
+        plan_payload=reset_payload,
+        invocation_id=test_case.expected_invocation_id,
+    )
+    page.route("**/api/destruction/plans", routes.fulfill_plan)
+    page.route("**/api/destruction/plans/reset-plan-1", routes.fulfill_read)
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{base_url}/pipelines", wait_until="domcontentloaded")
+    expect(page.get_by_placeholder("Search pipelines…")).to_be_visible()
+    expect(page.get_by_role("button", name="Reset target", exact=True)).to_have_count(0)
+    page.get_by_role("button", name="Destructive actions…", exact=True).click()
+    drawer: Locator = page.get_by_test_id("destructive-actions-drawer")
+    drawer_box: FloatRect | None = drawer.bounding_box()
+    assert drawer_box is not None
+    assert 360 <= drawer_box["width"] <= 390
+    expect(drawer.get_by_role("button", name="Review destroy plan", exact=True)).to_be_disabled()
+    expect(drawer).to_contain_text("Reset test / analytics")
+    reset_button: Locator = drawer.get_by_role("button", name="Review target reset", exact=True)
+    expect(reset_button).to_be_disabled()
+    drawer.get_by_label("Acknowledge entire target reset").click()
+    expect(reset_button).to_be_enabled()
+    reset_button.click()
+
+    expect(page).to_have_url(f"{base_url}/destruction/plans/reset-plan-1")
+    expect(page.get_by_text("Entire target", exact=True)).to_be_visible()
+    assert routes.request_bodies == [
+        {
+            "operation": "reset_target",
+            "pipelineNames": [],
+            "includedDependentPipelineNames": [],
+        }
+    ]
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-vv"])

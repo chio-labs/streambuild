@@ -1,14 +1,14 @@
 /**
- * The single authoritative StreamBuild domain model.
+ * The single authoritative SQLTide domain model.
  *
  * `main` (the SQLBuild Hub) re-declared mock shapes inline in six route files and
  * they diverged — node status was 'fresh'|'stale'|'warn'|'fail'|'source' in one
  * place and 'ok'|'fail'|'warn'|'stale'|'src' in another, needing a mapping layer.
  * Everything here is declared once and derived from there.
  *
- * Names mirror StreamBuild's own vocabulary so this file stays a faithful mirror
- * of `target/manifest.json` + `streambuild_dag.json` + the direct plan payload.
- * See .ai/streambuild_ui_plan.md §2.
+ * Names mirror SQLTide's own vocabulary so this file stays a faithful mirror
+ * of `target/manifest.json` + `sqltide_dag.json` + the direct plan payload.
+ * See .ai/sqltide_ui_plan.md §2.
  */
 
 // ─── replay ──────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ export type AnchorState = 'eligible' | 'aggregate' | 'mutable_ref' | 'never' | '
 
 // ─── sources ─────────────────────────────────────────────────────────────────
 
-/** `kafka` = StreamBuild owns the landing objects. `stream_table` = adopted, never mutated. */
+/** `kafka` = SQLTide owns the landing objects. `stream_table` = adopted, never mutated. */
 type SourceKind = 'kafka' | 'stream_table' | 'postgres';
 
 export type ManagedRelationKind = 'kafka_engine' | 'landing_mv' | 'landing_table';
@@ -42,7 +42,7 @@ type ManagedRelation = {
 
 export type PartitionState = {
 	partition: number;
-	/** Highest offset present in the StreamBuild landing table. */
+	/** Highest offset present in the SQLTide landing table. */
 	offset: number | null;
 	committedOffset: number | null;
 	endOffset: number | null;
@@ -78,7 +78,7 @@ export type Source = {
 	boundaryMode: ReplayBoundaryMode;
 	/** The relation models actually read: `raw__<name>` when managed, `table_name` when adopted. */
 	relationName: string;
-	/** Empty for adopted sources — StreamBuild creates nothing. */
+	/** Empty for adopted sources — SQLTide creates nothing. */
 	managedRelations: ManagedRelation[];
 	/** Refresh cadence for scheduled sources the warehouse pulls. null = event driven. */
 	refresh: string | null;
@@ -131,7 +131,7 @@ type StorageSpec = {
 };
 
 /**
- * How StreamBuild regards a live relation. `unmanaged` and `conflicted` mean a
+ * How SQLTide regards a live relation. `unmanaged` and `conflicted` mean a
  * build would touch something it doesn't own — the Plan page makes both loud.
  */
 type OwnershipState =
@@ -210,7 +210,7 @@ type ModelLiveState = {
 	/** Server-reported reasons the live warehouse diverges from compiled state. */
 	driftReasons: string[];
 	ownership: OwnershipState;
-	/** From `streambuild_target_ownership.replay_coverage_json`. */
+	/** From `sqltide_target_ownership.replay_coverage_json`. */
 	recordedCoverage: { from: string; to: string } | null;
 	semanticDrift: ModelSemanticDrift;
 };

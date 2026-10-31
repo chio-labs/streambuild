@@ -5,7 +5,7 @@
 	const login = createLoginState();
 </script>
 
-<svelte:head><title>Sign in · StreamBuild</title></svelte:head>
+<svelte:head><title>Sign in · SQLTide</title></svelte:head>
 
 <main class="grid min-h-screen place-items-center bg-background p-6">
 	<section class="w-full max-w-[390px] overflow-hidden rounded-lg border border-border bg-card shadow-[var(--sb-elev)]">
@@ -15,12 +15,12 @@
 					<KeyRoundIcon size={17} />
 				</div>
 				<div>
-					<h1 class="font-display text-[18px] font-semibold">StreamBuild</h1>
+					<h1 class="font-display text-[18px] font-semibold">SQLTide</h1>
 					<p class="text-muted-foreground font-mono text-[10px] uppercase tracking-[0.15em]">Control plane</p>
 				</div>
 			</div>
 			<h2 class="font-display text-[15px] font-medium">Sign in to continue</h2>
-			<p class="text-muted-foreground mt-1 text-[12px]">Use the account created by your StreamBuild administrator.</p>
+			<p class="text-muted-foreground mt-1 text-[12px]">Use the account created by your SQLTide administrator.</p>
 		</div>
 
 		<form class="space-y-4 px-7 py-6" onsubmit={(event) => { event.preventDefault(); void login.submit(); }}>

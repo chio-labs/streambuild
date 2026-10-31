@@ -56,7 +56,7 @@
 
 	/**
 	 * AXIS 2 — kind, in a COOL palette only, so badge colour never fakes an alert.
-	 * StreamBuild's families:
+	 * SQLTide's families:
 	 *   slate      raw ingest + landing storage (kafka engine, raw/adopted tables)
 	 *   teal-blue  materialized views — the continuously moving parts
 	 *   blue       model tables
@@ -170,7 +170,7 @@
 			</div>
 			<!--
 				Sources keep their kind label even when compact. Whether a source is a
-				managed Kafka source or an adopted relation decides whether StreamBuild
+				managed Kafka source or an adopted relation decides whether SQLTide
 				owns the data, which is exactly the fact worth knowing on a graph that
 				marks something as read-but-not-rebuilt. Models can afford to drop it;
 				their kind is already carried by the icon badge.

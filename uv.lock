@@ -1543,7 +1543,7 @@ wheels = [
 ]
 
 [[package]]
-name = "streambuild"
+name = "sqltide"
 version = "0.41.10"
 source = { editable = "." }
 dependencies = [

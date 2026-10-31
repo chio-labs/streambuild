@@ -11,6 +11,6 @@ describe('logout API', () => {
 
 		await requestLogout('proof');
 
-		expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ headers: { 'X-StreamBuild-CSRF': 'proof' } }));
+		expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ headers: { 'X-SQLTide-CSRF': 'proof' } }));
 	});
 });

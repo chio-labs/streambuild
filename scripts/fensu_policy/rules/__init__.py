@@ -1,1 +1,1 @@
-"""StreamBuild Fensu rule declarations."""
+"""SQLTide Fensu rule declarations."""

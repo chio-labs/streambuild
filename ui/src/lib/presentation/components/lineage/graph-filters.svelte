@@ -3,7 +3,7 @@
 
 	/**
 	 * Lineage filter state. Deliberately a small set of *concrete* axes rather
-	 * than a query language: StreamBuild has no tags, groups or owners to query
+	 * than a query language: SQLTide has no tags, groups or owners to query
 	 * on, so every axis here maps to something the manifest actually carries.
 	 *
 	 * Empty set = no constraint on that axis (not "match nothing").

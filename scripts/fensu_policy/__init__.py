@@ -1,1 +1,1 @@
-"""Repository-specific Fensu policy for StreamBuild."""
+"""Repository-specific Fensu policy for SQLTide."""

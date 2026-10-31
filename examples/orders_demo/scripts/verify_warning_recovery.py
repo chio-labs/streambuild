@@ -41,7 +41,7 @@ def compose_message(event_id: str) -> str | None:
     row = clickhouse_row(
         f"""
         SELECT coalesce(argMax(result_json, recorded_at), '') AS result_json
-        FROM _streambuild_sensor_steps
+        FROM _sqltide_sensor_steps
         WHERE sensor_name = 'quality_alerts'
           AND event_id = '{escaped_event_id}'
           AND step_key = 'compose'

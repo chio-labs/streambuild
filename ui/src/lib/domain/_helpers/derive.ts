@@ -374,7 +374,7 @@ function buildPhysicalGraph(project: Project, deployments: Deployment[] = []): G
 				status: 'source',
 				anchor: null,
 				kindLabel: 'ADOPTED TABLE',
-				sublabel: 'not owned by StreamBuild',
+				sublabel: 'not owned by SQLTide',
 				rows: source.live.rows,
 				rowsPerSecond: source.live.rowsPerSecond,
 				failingChecks: 0,

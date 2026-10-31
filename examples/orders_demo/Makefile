@@ -7,7 +7,7 @@ export
 
 start:
 	$(COMPOSE) up -d --build --wait
-	stb build --project-dir . --auto-approve
+	sqt build --project-dir . --auto-approve
 
 reset:
 	$(COMPOSE) down --volumes --remove-orphans
@@ -21,15 +21,15 @@ stop:
 	$(COMPOSE) down --remove-orphans
 
 dev:
-	stb dev --project-dir .
+	sqt dev --project-dir .
 
 logs:
 	$(COMPOSE) logs --follow producer redpanda clickhouse
 
 verify:
-	stb compile --project-dir .
-	stb test --project-dir .
-	stb audit --project-dir .
+	sqt compile --project-dir .
+	sqt test --project-dir .
+	sqt audit --project-dir .
 	python scripts/verify_demo.py
 
 verify-warning:

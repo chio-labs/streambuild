@@ -12,10 +12,10 @@ from scripts.fensu_policy.rules.workflow_authority import (
 from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
 
 _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
-    path=("src/streambuild/adapters/clickhouse/classes/clickhouse_connection.py"),
+    path=("src/sqltide/adapters/clickhouse/classes/clickhouse_connection.py"),
     source=dedent(
         """
-        from streambuild.adapter.classes.adapter_connection import (
+        from sqltide.adapter.classes.adapter_connection import (
             AdapterConnection as BaseConnection,
         )
 
@@ -31,10 +31,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
     [
         CustomRuleTestCase(
             description="allows the exact gateway to call the adapter method",
-            path="src/streambuild/executor/workflow/main/_execute_warehouse_workflow.py",
+            path="src/sqltide/executor/workflow/main/_execute_warehouse_workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 def execute(connection: AdapterConnection) -> None:
                     connection.execute_workflow_sql("SELECT 1;")
@@ -44,10 +44,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="rejects a direct imported adapter receiver",
-            path="src/streambuild/executor/direct/_helpers/execution.py",
+            path="src/sqltide/executor/direct/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 def execute(connection: AdapterConnection) -> None:
                     connection.execute_workflow_sql("DROP TABLE events;")
@@ -57,10 +57,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="rejects an aliased adapter type and bound method alias",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import (
+                from sqltide.adapter.classes.adapter_connection import (
                     AdapterConnection as Connection,
                 )
 
@@ -74,10 +74,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="rejects a class-level adapter method call through an import alias",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import (
+                from sqltide.adapter.classes.adapter_connection import (
                     AdapterConnection as Connection,
                 )
 
@@ -89,10 +89,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="rejects a proven concrete ClickHouse receiver without adapter import",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapters.clickhouse.classes.clickhouse_connection import (
+                from sqltide.adapters.clickhouse.classes.clickhouse_connection import (
                     ClickHouseConnection as Warehouse,
                 )
 
@@ -106,10 +106,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="allows an unproven same-named ClickHouse class near the concrete boundary",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapters.clickhouse.classes.clickhouse_connection import (
+                from sqltide.adapters.clickhouse.classes.clickhouse_connection import (
                     ClickHouseConnection,
                 )
 
@@ -121,17 +121,17 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
             expected_dependency_count=1,
             files=(
                 RuleFile(
-                    path=("src/streambuild/adapters/clickhouse/classes/clickhouse_connection.py"),
+                    path=("src/sqltide/adapters/clickhouse/classes/clickhouse_connection.py"),
                     source="class ClickHouseConnection:\n    pass\n",
                 ),
             ),
         ),
         CustomRuleTestCase(
             description="allows an unrelated same-named method despite adapter imports",
-            path="src/streambuild/cli/build/_helpers/metrics.py",
+            path="src/sqltide/cli/build/_helpers/metrics.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 class Metrics:
                     def execute_workflow_sql(self, value: str) -> None:
@@ -145,10 +145,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="rejects the real call one filename outside the exact gateway",
-            path="src/streambuild/executor/workflow/main/execute_warehouse_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_warehouse_workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 def execute(connection: AdapterConnection) -> None:
                     connection.execute_workflow_sql("DROP TABLE events;")
@@ -158,10 +158,10 @@ _CLICKHOUSE_CONNECTION_FILE: RuleFile = RuleFile(
         ),
         CustomRuleTestCase(
             description="preserves retired mutation method enforcement on real receivers",
-            path="src/streambuild/executor/direct/_helpers/execution.py",
+            path="src/sqltide/executor/direct/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 def execute(connection: AdapterConnection) -> None:
                     connection.insert_rows("events")
@@ -210,10 +210,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
     [
         CustomRuleTestCase(
             description="allows publication owner to construct the imported capability",
-            path="src/streambuild/cli/workflow_artifacts/main/_publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/_publish_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow
 
                 published = PublishedBuildWorkflow(workflow, root, digest)
                 """
@@ -222,10 +222,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="allows publication owner to construct an aliased real capability",
-            path="src/streambuild/cli/workflow_artifacts/main/_publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/_publish_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow as Published
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow as Published
 
                 published = Published(workflow, root, digest)
                 """
@@ -234,10 +234,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects aliased real capability construction outside publication",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow as Published
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow as Published
 
                 published = Published(workflow, root, digest)
                 """
@@ -246,10 +246,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects module-aliased real capability construction outside publication",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                import streambuild.executor.workflow.models as workflow_models
+                import sqltide.executor.workflow.models as workflow_models
 
                 published = workflow_models.PublishedBuildWorkflow(workflow, root, digest)
                 """
@@ -258,7 +258,7 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="allows an unrelated same-named capability class",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
                 from metrics.models import PublishedBuildWorkflow
@@ -270,10 +270,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects real capability construction just outside publication owner",
-            path="src/streambuild/cli/workflow_artifacts/main/publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/publish_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow
 
                 published = PublishedBuildWorkflow(workflow, root, digest)
                 """
@@ -282,14 +282,14 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="allows exact execution parameters with aliased canonical types",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import (
+                from sqltide.adapter.classes.adapter_connection import (
                     AdapterConnection as Connection,
                 )
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow as Published
-                from streambuild.executor.workflow.types import WorkflowEventEmitter
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow as Published
+                from sqltide.executor.workflow.types import WorkflowEventEmitter
 
                 def execute_build_workflow(
                     *,
@@ -304,11 +304,11 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects execution accepting the raw build workflow",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
-                from streambuild.executor.workflow.models import BuildWorkflow
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.executor.workflow.models import BuildWorkflow
 
                 def execute_build_workflow(
                     *, workflow: BuildWorkflow, connection: AdapterConnection
@@ -320,11 +320,11 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects an unrelated same-named capability annotation",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
                 from metrics.models import PublishedBuildWorkflow
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
 
                 def execute_build_workflow(
                     *, published_workflow: PublishedBuildWorkflow, connection: AdapterConnection
@@ -336,11 +336,11 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects an extra execution parameter",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.classes.adapter_connection import AdapterConnection
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow
+                from sqltide.adapter.classes.adapter_connection import AdapterConnection
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow
 
                 def execute_build_workflow(
                     *, published_workflow: PublishedBuildWorkflow,
@@ -354,10 +354,10 @@ def test_given_module_when_checking_mutation_gateway_then_only_owner_may_call_it
         ),
         CustomRuleTestCase(
             description="rejects a wrong connection parameter type",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import PublishedBuildWorkflow
+                from sqltide.executor.workflow.models import PublishedBuildWorkflow
 
                 def execute_build_workflow(
                     *, published_workflow: PublishedBuildWorkflow, connection: object
@@ -408,7 +408,7 @@ def test_given_module_when_checking_capability_then_only_publication_constructs_
     [
         CustomRuleTestCase(
             description="allows direct tuple iteration in execution",
-            path="src/streambuild/executor/workflow/main/_execute_warehouse_workflow.py",
+            path="src/sqltide/executor/workflow/main/_execute_warehouse_workflow.py",
             source=dedent(
                 """
                 def execute(statements: tuple[object, ...]) -> None:
@@ -420,25 +420,25 @@ def test_given_module_when_checking_capability_then_only_publication_constructs_
         ),
         CustomRuleTestCase(
             description="rejects sorting in publication",
-            path="src/streambuild/cli/workflow_artifacts/main/_publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/_publish_build_workflow.py",
             source="ordered = sorted(workflow.statements)\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects adapter rendering in execution",
-            path="src/streambuild/executor/workflow/main/_execute_warehouse_workflow.py",
+            path="src/sqltide/executor/workflow/main/_execute_warehouse_workflow.py",
             source="sql = connection.render_resource(resource=value, database='analytics')\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects planning in publication",
-            path="src/streambuild/cli/workflow_artifacts/main/_publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/_publish_build_workflow.py",
             source="plan = plan_deployment(desired_state)\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects statement construction in a consumer",
-            path="src/streambuild/cli/workflow_artifacts/main/_publish_build_workflow.py",
+            path="src/sqltide/cli/workflow_artifacts/main/_publish_build_workflow.py",
             source="statement = WarehouseStatement(1, 'step', phase, intent, sql)\n",
             expected_fault_count=1,
         ),
@@ -483,10 +483,10 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
     [
         CustomRuleTestCase(
             description="allows direct assembler to construct the real statement",
-            path="src/streambuild/executor/direct/_helpers/workflow.py",
+            path="src/sqltide/executor/direct/_helpers/workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import WarehouseStatement
+                from sqltide.executor.workflow.models import WarehouseStatement
 
                 statement = WarehouseStatement(1, 'step', phase, intent, sql)
                 """
@@ -495,10 +495,10 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
         ),
         CustomRuleTestCase(
             description="allows assembler to construct an aliased real statement",
-            path="src/streambuild/executor/backfill/_helpers/workflow.py",
+            path="src/sqltide/executor/backfill/_helpers/workflow.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import WarehouseStatement as Statement
+                from sqltide.executor.workflow.models import WarehouseStatement as Statement
 
                 statement = Statement(1, 'step', phase, intent, sql)
                 """
@@ -507,10 +507,10 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
         ),
         CustomRuleTestCase(
             description="rejects aliased real statement construction in cli",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import WarehouseStatement as Statement
+                from sqltide.executor.workflow.models import WarehouseStatement as Statement
 
                 statement = Statement(1, 'step', phase, intent, sql)
                 """
@@ -519,10 +519,10 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
         ),
         CustomRuleTestCase(
             description="rejects module-aliased real statement construction in adapter",
-            path="src/streambuild/adapters/clickhouse/_helpers/rendering.py",
+            path="src/sqltide/adapters/clickhouse/_helpers/rendering.py",
             source=dedent(
                 """
-                import streambuild.executor.workflow.models as workflow_models
+                import sqltide.executor.workflow.models as workflow_models
 
                 statement = workflow_models.WarehouseStatement(1, 'step', phase, intent, sql)
                 """
@@ -531,7 +531,7 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
         ),
         CustomRuleTestCase(
             description="allows an unrelated same-named statement class",
-            path="src/streambuild/cli/build/_helpers/execution.py",
+            path="src/sqltide/cli/build/_helpers/execution.py",
             source=dedent(
                 """
                 from metrics.models import WarehouseStatement
@@ -543,10 +543,10 @@ def test_given_consumer_when_checking_purity_then_it_cannot_derive_workflow_deci
         ),
         CustomRuleTestCase(
             description="rejects real statement construction just outside assembler path",
-            path="src/streambuild/executor/direct/_helpers/workflows.py",
+            path="src/sqltide/executor/direct/_helpers/workflows.py",
             source=dedent(
                 """
-                from streambuild.executor.workflow.models import WarehouseStatement
+                from sqltide.executor.workflow.models import WarehouseStatement
 
                 statement = WarehouseStatement(1, 'step', phase, intent, sql)
                 """

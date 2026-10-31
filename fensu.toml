@@ -1,7 +1,7 @@
 [targets.python]
 analyzer = "python"
 root = "."
-roots = ["src/streambuild"]
+roots = ["src/sqltide"]
 tests = ["tests"]
 tooling = ["scripts"]
 rule_modules = [
@@ -12,7 +12,7 @@ rule_modules = [
   "scripts.fensu_policy.rules.sql_analysis_boundary",
   "scripts.fensu_policy.rules.workflow_authority",
 ]
-select = ["FF", "XSTB"]
+select = ["FF", "XSQT"]
 
 [targets.python.cache]
 enabled = true
@@ -23,35 +23,35 @@ exclude = ["tests/e2e/fixtures/**"]
 
 [[targets.python.rule_exceptions]]
 rule = "FFR402"
-path = "src/streambuild/sensors/__init__.py"
-reason = "Authored project sensors import the public sensor API from streambuild.sensors, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
+path = "src/sqltide/sensors/__init__.py"
+reason = "Authored project sensors import the public sensor API from sqltide.sensors, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
 
 [[targets.python.rule_exceptions]]
 rule = "FFR402"
-path = "src/streambuild/events/__init__.py"
-reason = "Authored project sensors import derived event types from streambuild.events, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
+path = "src/sqltide/events/__init__.py"
+reason = "Authored project sensors import derived event types from sqltide.events, so this package initializer re-exports the closed authored surface exactly as the CHI-18 specification defines it."
 
 [[targets.python.rule_exceptions]]
 rule = "FFS120"
-path = "src/streambuild/sensors/classes/event_sensor_context.py"
+path = "src/sqltide/sensors/classes/event_sensor_context.py"
 symbols = ["EventSensorContext.step"]
 reason = "The authored durable-step API is ctx.step(key, fn, policy=...) with positional key and callable per the CHI-18 specification; keyword-only parameters would break the documented authored ergonomics."
 
 [[targets.python.rule_exceptions]]
 rule = "FFS120"
-path = "src/streambuild/sensors/classes/durable_step_runner.py"
+path = "src/sqltide/sensors/classes/durable_step_runner.py"
 symbols = ["DurableStepRunner.run"]
 reason = "DurableStepRunner.run backs the authored ctx.step(key, fn, policy=...) signature, so its parameters mirror that positional authored contract."
 
 [[targets.python.rule_exceptions]]
 rule = "FFT104"
-path = "tests/e2e/src/streambuild/dev_server/helpers.py"
+path = "tests/e2e/src/sqltide/dev_server/helpers.py"
 symbols = ["wait_for_sensor_first_dispatch", "wait_for_sensor_dead_letter"]
 reason = "These wait_for_* helpers poll the dev server until sensor dispatch state is reached asynchronously. A bounded retry loop and its readiness condition are the wait itself, so they cannot be expressed branch-free."
 
 [[targets.python.rule_exceptions]]
 rule = "FFT104"
-path = "tests/e2e/src/streambuild/executor/helpers.py"
+path = "tests/e2e/src/sqltide/executor/helpers.py"
 symbols = ["wait_for_query_view_activity", "wait_for_row_count", "wait_for_state_model_activity", "wait_for_table_exists", "wait_for_table_missing"]
 reason = "These wait_for_* helpers poll for state reached asynchronously. A bounded retry loop and its early return are the wait condition, so they cannot be expressed branch-free. Every other conditional in this module has been removed."
 

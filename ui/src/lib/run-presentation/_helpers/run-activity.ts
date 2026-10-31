@@ -20,9 +20,9 @@ export function buildRunActivity(input: RunPresentationInput): RunActivityPresen
 			: !input.running && completedStatements.length > 0
 				? `${completedStatements.length}`
 				: null;
-	const displayCommand: string = input.commandLine.startsWith('stb ')
+	const displayCommand: string = input.commandLine.startsWith('sqt ')
 		? input.commandLine
-		: `stb ${input.commandLine}`;
+		: `sqt ${input.commandLine}`;
 	return {
 		startedEvent,
 		completedStatements,
@@ -39,7 +39,7 @@ function buildRetryHref(
 	commandLine: string,
 	startedEvent: RunEvent | undefined
 ): string | null {
-	if (running || !(commandLine === 'build' || commandLine.startsWith('stb build'))) return null;
+	if (running || !(commandLine === 'build' || commandLine.startsWith('sqt build'))) return null;
 	const params: URLSearchParams = new URLSearchParams();
 	for (const selector of startedEvent?.selectors ?? []) params.append('select', selector);
 	if (startedEvent?.startTime) params.set('start', startedEvent.startTime);

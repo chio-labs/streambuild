@@ -15,9 +15,9 @@ export function requestWithAuthentication(
 		});
 	}
 	const headers: Headers = new Headers(init.headers);
-	if (csrfToken !== null) headers.set('X-StreamBuild-CSRF', csrfToken);
+	if (csrfToken !== null) headers.set('X-SQLTide-CSRF', csrfToken);
 	else if (proxyAuthenticated) {
-		headers.set('X-StreamBuild-CSRF', 'trusted-proxy');
+		headers.set('X-SQLTide-CSRF', 'trusted-proxy');
 	}
 	return fetch(input, { ...init, headers }).then((response) => {
 		if (response.status === 401) controller.markUnauthenticated();

@@ -28,7 +28,7 @@ const PROTECTED_PIPELINES: Pipeline[] = [
 
 describe('run command suggestions', () => {
 	it('given a partial selector when suggesting then matching pipeline and model values are shell quoted', () => {
-		const command: string = 'stb build --select sales';
+		const command: string = 'sqt build --select sales';
 		const suggestions: RunCommandSuggestion[] = runCommandSuggestions(
 			command,
 			command.length,
@@ -53,7 +53,7 @@ describe('run command suggestions', () => {
 	});
 
 	it('given duplicate protected confirmations when suggesting then one unconfirmed value is offered', () => {
-		const command: string = 'stb build --select stock --confirm ';
+		const command: string = 'sqt build --select stock --confirm ';
 		const suggestions: RunCommandSuggestion[] = runCommandSuggestions(
 			command,
 			command.length,
@@ -72,7 +72,7 @@ describe('run command suggestions', () => {
 	});
 
 	it('given a partial flag when suggesting then only matching supported flags are offered', () => {
-		const command: string = 'stb build --sta';
+		const command: string = 'sqt build --sta';
 		const suggestions: RunCommandSuggestion[] = runCommandSuggestions(
 			command,
 			command.length,

@@ -6,7 +6,7 @@
 	type Props = { anchor: AnchorState; showReason?: boolean };
 	let { anchor, showReason = false }: Props = $props();
 
-	// Anchor eligibility is StreamBuild-native and operationally meaningful — it's
+	// Anchor eligibility is SQLTide-native and operationally meaningful — it's
 	// where a replay can start. Crucially we show WHY NOT, which the CLI never does.
 	const shortLabel: Record<AnchorState, string> = {
 		eligible: 'anchor',

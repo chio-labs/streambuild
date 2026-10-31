@@ -12,7 +12,7 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
     [
         CustomRuleTestCase(
             description="rejects planner use of the Quality history renderer",
-            path="src/streambuild/compiler/planner/main/load_actual_state.py",
+            path="src/sqltide/compiler/planner/main/load_actual_state.py",
             source=dedent(
                 """
                 def load(connection) -> str:
@@ -28,7 +28,7 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects planner aliases of the Quality history renderer",
-            path="src/streambuild/compiler/planner/_helpers/load_actual_state.py",
+            path="src/sqltide/compiler/planner/_helpers/load_actual_state.py",
             source=dedent(
                 """
                 def load(connection) -> str:
@@ -45,10 +45,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects aliased observability table constant imports in janitor",
-            path="src/streambuild/executor/janitor/_helpers/execute.py",
+            path="src/sqltide/executor/janitor/_helpers/execute.py",
             source=dedent(
                 """
-                from streambuild.adapter.constants import (
+                from sqltide.adapter.constants import (
                     METADATA_INVOCATIONS_TABLE_NAME as HISTORY_TABLE,
                 )
 
@@ -60,16 +60,16 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects raw observability table names in publish decisions",
-            path="src/streambuild/executor/promotion/_helpers/resolution.py",
-            source='QUERY = "SELECT * FROM _streambuild_node_results"\n',
+            path="src/sqltide/executor/promotion/_helpers/resolution.py",
+            source='QUERY = "SELECT * FROM _sqltide_node_results"\n',
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects module-qualified observability constants in repair",
-            path="src/streambuild/cli/repair_active_view/main/_run_repair_active_view.py",
+            path="src/sqltide/cli/repair_active_view/main/_run_repair_active_view.py",
             source=dedent(
                 """
-                import streambuild.adapter.constants as adapter_constants
+                import sqltide.adapter.constants as adapter_constants
 
                 def read() -> str:
                     return adapter_constants.METADATA_NODE_RESULTS_TABLE_NAME
@@ -79,7 +79,7 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects Quality history reads from build workflow execution",
-            path="src/streambuild/executor/workflow/main/execute_build_workflow.py",
+            path="src/sqltide/executor/workflow/main/execute_build_workflow.py",
             source=dedent(
                 """
                 def execute(connection) -> str:
@@ -95,13 +95,13 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects Quality history reads from the mutation gateway",
-            path=("src/streambuild/executor/workflow/main/_execute_warehouse_workflow.py"),
-            source='QUERY = "SELECT * FROM _streambuild_invocations"\n',
+            path=("src/sqltide/executor/workflow/main/_execute_warehouse_workflow.py"),
+            source='QUERY = "SELECT * FROM _sqltide_invocations"\n',
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects Quality history reads from CLI dispatch",
-            path="src/streambuild/cli/entry/_helpers/dispatch.py",
+            path="src/sqltide/cli/entry/_helpers/dispatch.py",
             source=dedent(
                 """
                 def dispatch(connection) -> str:
@@ -118,16 +118,16 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects Quality history reads from shared CLI selection",
-            path="src/streambuild/cli/selection/main/_selection.py",
-            source='QUERY = "SELECT * FROM _streambuild_node_results"\n',
+            path="src/sqltide/cli/selection/main/_selection.py",
+            source='QUERY = "SELECT * FROM _sqltide_node_results"\n',
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects planner imports of UI history readers",
-            path="src/streambuild/compiler/planner/_helpers/load_actual_state.py",
+            path="src/sqltide/compiler/planner/_helpers/load_actual_state.py",
             source=dedent(
                 """
-                from streambuild.quality.main.read_history import read_history
+                from sqltide.quality.main.read_history import read_history
 
                 def load() -> object:
                     return read_history()
@@ -137,10 +137,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects split from-imports of the Quality domain",
-            path="src/streambuild/executor/reconcile/_helpers/preview.py",
+            path="src/sqltide/executor/reconcile/_helpers/preview.py",
             source=dedent(
                 """
-                from streambuild import quality
+                from sqltide import quality
 
                 def load() -> object:
                     return quality.read_history()
@@ -150,14 +150,14 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects dynamic imports of UI history readers",
-            path="src/streambuild/cli/build/_helpers/preview.py",
+            path="src/sqltide/cli/build/_helpers/preview.py",
             source=dedent(
                 """
                 import importlib
 
                 def load() -> object:
                     return importlib.import_module(
-                        "streambuild.quality.main.read_history"
+                        "sqltide.quality.main.read_history"
                     )
                 """
             ),
@@ -165,27 +165,27 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects imported dynamic loaders of UI history readers",
-            path="src/streambuild/cli/build/_helpers/preview.py",
+            path="src/sqltide/cli/build/_helpers/preview.py",
             source=dedent(
                 """
                 from importlib import import_module
 
                 def load() -> object:
-                    return import_module("streambuild.quality.main.read_history")
+                    return import_module("sqltide.quality.main.read_history")
                 """
             ),
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="rejects module-aliased dynamic loaders of UI history readers",
-            path="src/streambuild/cli/plan/_helpers/plan_rendering.py",
+            path="src/sqltide/cli/plan/_helpers/plan_rendering.py",
             source=dedent(
                 """
                 import importlib as loader
 
                 def load() -> object:
                     return loader.import_module(
-                        "streambuild.quality.main.read_history"
+                        "sqltide.quality.main.read_history"
                     )
                 """
             ),
@@ -193,21 +193,21 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="allows the ClickHouse adapter to render Quality history",
-            path="src/streambuild/adapters/clickhouse/_helpers/metadata.py",
+            path="src/sqltide/adapters/clickhouse/_helpers/metadata.py",
             source=dedent(
                 """
                 def render() -> str:
-                    return "SELECT * FROM _streambuild_node_results"
+                    return "SELECT * FROM _sqltide_node_results"
                 """
             ),
             expected_fault_count=0,
         ),
         CustomRuleTestCase(
             description="allows observability persistence to name its own tables",
-            path="src/streambuild/executor/observability/_helpers/workflow.py",
+            path="src/sqltide/executor/observability/_helpers/workflow.py",
             source=dedent(
                 """
-                from streambuild.adapter.constants import METADATA_INVOCATIONS_TABLE_NAME
+                from sqltide.adapter.constants import METADATA_INVOCATIONS_TABLE_NAME
 
                 def render() -> str:
                     return METADATA_INVOCATIONS_TABLE_NAME
@@ -217,14 +217,14 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="allows observation workflow persistence to name history tables",
-            path=("src/streambuild/executor/workflow/main/_execute_observation_workflow.py"),
-            source='QUERY = "INSERT INTO _streambuild_node_results"\n',
+            path=("src/sqltide/executor/workflow/main/_execute_observation_workflow.py"),
+            source='QUERY = "INSERT INTO _sqltide_node_results"\n',
             expected_fault_count=0,
         ),
         CustomRuleTestCase(
             description="allows a UI consumer to read Quality history",
-            path="src/streambuild/quality/main/read_history.py",
-            source='QUERY = "SELECT * FROM _streambuild_invocations"\n',
+            path="src/sqltide/quality/main/read_history.py",
+            source='QUERY = "SELECT * FROM _sqltide_invocations"\n',
             expected_fault_count=0,
         ),
     ],

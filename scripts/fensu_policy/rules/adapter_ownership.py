@@ -25,14 +25,14 @@ from scripts.fensu_policy.constants import (
 
 
 @rule(
-    code="XSTB001",
+    code="XSQT001",
     family=Family.CUSTOM,
     slug="adapter-package-ownership",
     message="modules must use the active adapter package boundaries",
     remediation=(
-        "Depend on the neutral streambuild.adapter contract from compiler modules, and "
-        "replace retired streambuild.clickhouse or streambuild.integrations.clickhouse "
-        "imports with their streambuild.adapters.clickhouse owners."
+        "Depend on the neutral sqltide.adapter contract from compiler modules, and "
+        "replace retired sqltide.clickhouse or sqltide.integrations.clickhouse "
+        "imports with their sqltide.adapters.clickhouse owners."
     ),
 )
 def adapter_package_ownership(*, module: object, ctx: RuleContext) -> list[Fault]:
@@ -96,13 +96,13 @@ def adapter_package_ownership(*, module: object, ctx: RuleContext) -> list[Fault
 
 
 @rule(
-    code="XSTB002",
+    code="XSQT002",
     family=Family.CUSTOM,
     slug="warehouse-driver-ownership",
     message="only the ClickHouse adapter may import the ClickHouse driver",
     remediation=(
         "Move driver access and driver-exception translation into "
-        "src/streambuild/adapters/clickhouse/ and depend on neutral adapter exceptions."
+        "src/sqltide/adapters/clickhouse/ and depend on neutral adapter exceptions."
     ),
 )
 def warehouse_driver_ownership(*, module: object, ctx: RuleContext) -> list[Fault]:

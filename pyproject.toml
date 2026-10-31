@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "streambuild"
+name = "sqltide"
 version = "0.41.10"
 description = "Declarative SQL streaming pipelines for ClickHouse"
 readme = "README.md"
@@ -23,11 +23,11 @@ dependencies = [
 
 [project.urls]
 Documentation = "https://docs.streambuild.dev"
-Issues = "https://github.com/sqlstack-io/streambuild/issues"
-Repository = "https://github.com/sqlstack-io/streambuild"
+Issues = "https://github.com/sqlstack-io/sqltide/issues"
+Repository = "https://github.com/sqlstack-io/sqltide"
 
 [project.scripts]
-stb = "streambuild.cli.entry.main.main:main"
+sqt = "sqltide.cli.entry.main.main:main"
 
 [dependency-groups]
 dev = [
@@ -49,10 +49,10 @@ dev = [
 
 [tool.hatch.build]
 # Built dev UI is gitignored but must ship in distributions (`make dist`).
-artifacts = ["src/streambuild/dev_server/static/**"]
+artifacts = ["src/sqltide/dev_server/static/**"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/streambuild", "scripts"]
+packages = ["src/sqltide", "scripts"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"

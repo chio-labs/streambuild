@@ -30,7 +30,7 @@
 <svelte:head>
 	<link rel="icon" href="/favicon.png" />
 	{#if app.phase !== 'ready'}
-		<title>StreamBuild</title>
+		<title>SQLTide</title>
 	{/if}
 </svelte:head>
 
@@ -65,7 +65,7 @@
 {:else if app.phase === 'unreachable'}
 	<div class="text-muted-foreground grid h-screen place-items-center font-mono text-[13px]">
 		<div class="flex flex-col items-center gap-2">
-			<div>stb dev is not reachable</div>
+			<div>sqt dev is not reachable</div>
 			<div class="text-[var(--sb-text-faint)] text-[11px]">{app.fetchError}</div>
 		</div>
 	</div>

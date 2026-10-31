@@ -12,10 +12,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
     [
         CustomRuleTestCase(
             description="rejects event construction outside the events catalog",
-            path="src/streambuild/sensors/classes/sensor_dispatcher.py",
+            path="src/sqltide/sensors/classes/sensor_dispatcher.py",
             source=dedent(
                 """
-                from streambuild.events.models import AuditCompleted
+                from sqltide.events.models import AuditCompleted
 
                 def emit() -> AuditCompleted:
                     return AuditCompleted(
@@ -39,10 +39,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="rejects run event construction in the dev server",
-            path="src/streambuild/dev_server/_helpers/server/api_routes.py",
+            path="src/sqltide/dev_server/_helpers/server/api_routes.py",
             source=dedent(
                 """
-                from streambuild.events.models import RunCompleted
+                from sqltide.events.models import RunCompleted
 
                 def emit() -> RunCompleted:
                     return RunCompleted(
@@ -63,10 +63,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="allows event construction inside the events catalog",
-            path="src/streambuild/events/main/events_from_node_result.py",
+            path="src/sqltide/events/main/events_from_node_result.py",
             source=dedent(
                 """
-                from streambuild.events.models import AuditCompleted
+                from sqltide.events.models import AuditCompleted
 
                 def derive() -> str:
                     return "AuditCompleted(" + ")"
@@ -76,10 +76,10 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="allows consuming events without constructing them",
-            path="src/streambuild/sensors/_helpers/dispatch.py",
+            path="src/sqltide/sensors/_helpers/dispatch.py",
             source=dedent(
                 """
-                from streambuild.events.models import AuditCompleted
+                from sqltide.events.models import AuditCompleted
 
                 def matches(event: AuditCompleted) -> bool:
                     return event.target == "prod"

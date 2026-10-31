@@ -3,16 +3,16 @@ import { readLineageGroupMode } from '$lib/lineage-view/_helpers/lineage-locatio
 
 describe('lineage location', () => {
 	it('given URLs without grouping when reading lineage mode then uses scale-safe defaults', () => {
-		expect(readLineageGroupMode(new URL('http://streambuild/lineage'))).toBe('lanes');
-		expect(readLineageGroupMode(new URL('http://streambuild/lineage?mode=physical'))).toBe('boxes');
+		expect(readLineageGroupMode(new URL('http://sqltide/lineage'))).toBe('lanes');
+		expect(readLineageGroupMode(new URL('http://sqltide/lineage?mode=physical'))).toBe('boxes');
 	});
 
 	it('given explicit physical grouping when reading lineage mode then preserves full detail', () => {
 		expect(
-			readLineageGroupMode(new URL('http://streambuild/lineage?mode=physical&group=none'))
+			readLineageGroupMode(new URL('http://sqltide/lineage?mode=physical&group=none'))
 		).toBe('none');
 		expect(
-			readLineageGroupMode(new URL('http://streambuild/lineage?mode=physical&group=lanes'))
+			readLineageGroupMode(new URL('http://sqltide/lineage?mode=physical&group=lanes'))
 		).toBe('lanes');
 	});
 });

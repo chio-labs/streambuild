@@ -5,7 +5,7 @@
 
 <script lang="ts">
 	import CopyIcon from '@lucide/svelte/icons/copy';
-	import { highlightStreambuild } from '$lib/presentation/_helpers/sql/highlight';
+	import { highlightSQLTide } from '$lib/presentation/_helpers/sql/highlight';
 	import { createCopyFeedbackResource } from '$lib/presentation/_resources/copy-feedback.resource';
 
 	type Props = {
@@ -26,7 +26,7 @@
 	const active = $derived(
 		available.find((artifact) => artifact.label === activeLabel) ?? available[0]
 	);
-	const highlighted = $derived(active ? highlightStreambuild(active.code as string) : '');
+	const highlighted = $derived(active ? highlightSQLTide(active.code as string) : '');
 
 	async function copyActive(): Promise<void> {
 		if (!active) return;

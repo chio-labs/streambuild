@@ -10,8 +10,8 @@ from urllib.parse import quote
 
 from providers.console import ConsoleNotifier
 
-from streambuild.events import AuditCompleted, AuditTransition
-from streambuild.sensors import (
+from sqltide.events import AuditCompleted, AuditTransition
+from sqltide.sensors import (
     DefaultSensorStatus,
     EventSensorContext,
     SensorRetryPolicy,

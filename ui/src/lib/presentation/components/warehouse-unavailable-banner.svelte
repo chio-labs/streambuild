@@ -32,7 +32,7 @@
 				Next scheduled connection check: {nextAttempt}. Retry delays are capped at 30 seconds;
 				connection attempts can take longer.
 			{:else if status.warehouseState === 'retrying'}
-				StreamBuild will keep trying in the background. Retry delays are capped at 30 seconds;
+				SQLTide will keep trying in the background. Retry delays are capped at 30 seconds;
 				connection attempts can take longer.
 			{:else}
 				Automatic reconnection is unavailable for this server configuration.
