@@ -4,8 +4,8 @@ from typing import Any
 
 from sqltide.compiler.sql_analysis._helpers.aggregates import build_aggregate_facts
 from sqltide.compiler.sql_analysis._helpers.polyglot import (
-    collect_tree_facts,
     parse_sql_tree,
+    tree_aggregate_facts,
 )
 from sqltide.compiler.sql_analysis._helpers.query_rewriting import get_select_payload
 from sqltide.compiler.sql_analysis._helpers.scanning import (
@@ -42,7 +42,7 @@ def rewrite_template_query(
     rewritten = merge_template_ctes_impl(template=rewritten, named_queries=prepend_ctes)
     tree: dict[str, Any] = parse_sql_tree(sql=rewritten, dialect=dialect)
     _ = get_select_payload(tree)
-    function_names, has_group_by, _, _ = collect_tree_facts(tree=tree)
+    function_names, has_group_by = tree_aggregate_facts(tree=tree)
     facts: SqlAggregateFacts = build_aggregate_facts(
         function_names=function_names, has_group_by=has_group_by, engine=""
     )

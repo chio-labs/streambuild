@@ -1,14 +1,11 @@
 """Invocation-scoped model SQL analysis and canonical generation."""
 
 from collections.abc import Mapping
-from typing import Any
 
+import sqltide._native as _native
 from sqltide.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
 from sqltide.compiler.sql_analysis._helpers.model_analysis import analyze_model_sql_impl
-from sqltide.compiler.sql_analysis._helpers.polyglot import (
-    build_resolved_query,
-    canonical_query_with_database_template,
-)
+from sqltide.compiler.sql_analysis._helpers.polyglot import native_references, sql_tree_error
 from sqltide.compiler.sql_analysis._helpers.storage import analyze_storage_expressions
 from sqltide.compiler.sql_analysis.exceptions import SqlAnalysisError
 from sqltide.compiler.sql_analysis.models import (
@@ -17,19 +14,14 @@ from sqltide.compiler.sql_analysis.models import (
     SqlResolvedQuery,
     SqlStorageExpression,
 )
-from sqltide.compiler.sql_analysis.types import ProjectionTypeCache
 
 
 class SqlModelAnalyzer:
     """Own private parsed model state for one complete compiler invocation."""
 
     def __init__(self, *, dialect: str) -> None:
-        self._dialect: str = dialect
-        self._resolution_by_analysis: dict[
-            SqlModelAnalysis, tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None]
-        ] = {}
-        self._relation_cache: dict[str, tuple[dict[str, Any], str | None, dict[str, str]]] = {}
-        self._type_cache: ProjectionTypeCache = {}
+        self._analyzer: _native.SqlTreeAnalyzer = _native.SqlTreeAnalyzer(dialect)
+        self._tree_by_analysis: dict[SqlModelAnalysis, _native.SqlModelTree] = {}
 
     def analyze(
         self,
@@ -43,19 +35,16 @@ class SqlModelAnalyzer:
         """Analyze one authored model and retain only private rewrite state."""
 
         analysis: SqlModelAnalysis
-        tree: dict[str, Any]
-        reference_slots: tuple[tuple[Any, Any], ...]
-        raw_relation: str | None
-        analysis, tree, self._type_cache, reference_slots, raw_relation = analyze_model_sql_impl(
+        tree: _native.SqlModelTree
+        analysis, tree = analyze_model_sql_impl(
             sql=sql,
             engine=engine,
             order_by=order_by,
             partition_by=partition_by,
             ttl=ttl,
-            dialect=self._dialect,
-            type_cache=self._type_cache,
+            analyzer=self._analyzer,
         )
-        self._resolution_by_analysis[analysis] = (tree, reference_slots, raw_relation)
+        self._tree_by_analysis[analysis] = tree
         return analysis
 
     def resolve(
@@ -66,43 +55,33 @@ class SqlModelAnalyzer:
     ) -> SqlResolvedQuery:
         """Resolve and qualify a previously analyzed model without reparsing it."""
 
-        resolution: tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None] | None = (
-            self._resolution_by_analysis.get(analysis)
-        )
-        if resolution is None:
-            raise SqlAnalysisError("Model analysis does not belong to this compiler invocation")
-        resolved_query: SqlResolvedQuery
-        resolved_query, self._relation_cache = build_resolved_query(
-            tree=resolution[0],
-            reference_slots=resolution[1],
-            raw_relation=resolution[2],
-            authored_sql=analysis.authored_sql,
-            dialect=self._dialect,
-            references=analysis.references,
-            resolver=resolver,
-            relation_cache=self._relation_cache,
-            database_placeholder=ADAPTER_DATABASE_PLACEHOLDER,
-        )
-        return resolved_query
+        try:
+            canonical_sql, database_template = self._analyzer.resolve_model(
+                self._tree(analysis),
+                analysis.authored_sql,
+                native_references(analysis.references),
+                resolver,
+                ADAPTER_DATABASE_PLACEHOLDER,
+            )
+        except _native.SqlTreeError as error:
+            raise sql_tree_error(error) from None
+        return SqlResolvedQuery(canonical_sql=canonical_sql, database_template=database_template)
 
     def uses_prewhere(self, *, analysis: SqlModelAnalysis) -> bool:
         """Return whether an analyzed query contains a PREWHERE clause."""
 
-        resolution: tuple[dict[str, Any], tuple[tuple[Any, Any], ...], str | None] | None = (
-            self._resolution_by_analysis.get(analysis)
-        )
-        if resolution is None:
-            raise SqlAnalysisError("Model analysis does not belong to this compiler invocation")
-        return _contains_key(value=resolution[0], key="prewhere")
+        return self._tree(analysis).uses_prewhere()
 
     def canonicalize_query(self, *, sql: str) -> SqlResolvedQuery:
         """Generate canonical and adapter-template forms of a generated query."""
 
-        return canonical_query_with_database_template(
-            sql=sql,
-            dialect=self._dialect,
-            database_placeholder=ADAPTER_DATABASE_PLACEHOLDER,
-        )
+        try:
+            canonical_sql, database_template = self._analyzer.canonicalize_query(
+                sql, ADAPTER_DATABASE_PLACEHOLDER
+            )
+        except _native.SqlTreeError as error:
+            raise sql_tree_error(error) from None
+        return SqlResolvedQuery(canonical_sql=canonical_sql, database_template=database_template)
 
     def analyze_storage(
         self,
@@ -119,13 +98,11 @@ class SqlModelAnalyzer:
             partition_by=partition_by,
             ttl=ttl,
             output_columns=output_columns,
-            dialect=self._dialect,
+            analyzer=self._analyzer,
         )
 
-
-def _contains_key(*, value: Any, key: str) -> bool:
-    if isinstance(value, dict):
-        return key in value or any(_contains_key(value=child, key=key) for child in value.values())
-    if isinstance(value, list):
-        return any(_contains_key(value=child, key=key) for child in value)
-    return False
+    def _tree(self, analysis: SqlModelAnalysis) -> _native.SqlModelTree:
+        tree: _native.SqlModelTree | None = self._tree_by_analysis.get(analysis)
+        if tree is None:
+            raise SqlAnalysisError("Model analysis does not belong to this compiler invocation")
+        return tree

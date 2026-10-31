@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/sqltide-sqltext",
+    "crates/sqltide-sqlanalysis",
     "crates/sqltide-python",
 ]
 resolver = "2"
@@ -24,6 +25,7 @@ pyo3 = { version = "0.26", features = ["abi3-py312"] }
 pythonize = "0.26"
 serde = "1"
 serde_json = "1"
+sqltide-sqlanalysis = { path = "crates/sqltide-sqlanalysis" }
 sqltide-sqltext = { path = "crates/sqltide-sqltext" }
 
 [workspace.lints.rust]

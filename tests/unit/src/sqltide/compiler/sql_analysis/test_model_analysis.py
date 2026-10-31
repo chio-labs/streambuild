@@ -1,18 +1,12 @@
-from unittest.mock import patch
-
 import pytest
 
-import sqltide._native as _native
 from sqltide.adapter.constants import ADAPTER_DATABASE_PLACEHOLDER
-from sqltide.adapter.models import AdapterMaterializedView
-from sqltide.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from sqltide.compiler.sql_analysis.classes.sql_model_analyzer import SqlModelAnalyzer
 from sqltide.compiler.sql_analysis.exceptions import SqlAnalysisError
 from sqltide.compiler.sql_analysis.models import SqlModelAnalysis, SqlResolvedQuery
 from tests.unit.src.sqltide.compiler.sql_analysis._test_types import (
     ModelAggregateAnalysisTestCase,
     ModelAnalysisOrderingTestCase,
-    ModelCallCountTestCase,
     ModelRawRelationTestCase,
     ModelRepeatedResolutionTestCase,
     ModelReservedPlaceholderTestCase,
@@ -435,71 +429,6 @@ def test_given_raw_model_relation_when_resolving_then_it_raises_an_error(
 
     with pytest.raises(SqlAnalysisError, match=test_case.expected_error_fragment):
         analyzer.resolve(analysis=analysis, resolver=test_case.resolver)
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ModelCallCountTestCase(
-            description="does not reparse or reanalyze a model during resolution and rendering",
-            sql=('SELECT CAST(order_id AS UInt64) AS order_id FROM __source("orders")'),
-            resolver={"orders": "raw__orders"},
-            expected_parse_calls=1,
-            expected_parse_one_calls=2,
-            expected_analyze_calls=0,
-            expected_generate_calls=3,
-        )
-    ],
-    ids=lambda case: case.description,
-)
-def test_given_one_model_invocation_when_realizing_then_polyglot_calls_are_bounded(
-    test_case: ModelCallCountTestCase,
-) -> None:
-    analyzer: SqlModelAnalyzer = SqlModelAnalyzer(dialect="clickhouse")
-    with (
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse",
-            wraps=_native.polyglot_parse,
-        ) as parse,
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
-            wraps=_native.polyglot_parse_one,
-        ) as parse_one,
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_analyze_query",
-            wraps=_native.polyglot_analyze_query,
-        ) as analyze_query,
-        patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
-            wraps=_native.polyglot_generate,
-        ) as generate,
-    ):
-        analysis: SqlModelAnalysis = analyzer.analyze(
-            sql=test_case.sql,
-            engine="MergeTree()",
-            order_by=("order_id",),
-            partition_by=None,
-            ttl=None,
-        )
-        resolved_query: SqlResolvedQuery = analyzer.resolve(
-            analysis=analysis,
-            resolver=test_case.resolver,
-        )
-        _ = ClickHouseAdapter().render_resource(
-            resource=AdapterMaterializedView(
-                name="mv__orders",
-                source_relation_name="raw__orders",
-                target_relation_name="tbl__orders",
-                query=resolved_query.canonical_sql,
-                database_template=resolved_query.database_template,
-            ),
-            database="analytics",
-        )
-
-    assert parse.call_count == test_case.expected_parse_calls
-    assert parse_one.call_count == test_case.expected_parse_one_calls
-    assert analyze_query.call_count == test_case.expected_analyze_calls
-    assert generate.call_count == test_case.expected_generate_calls
 
 
 @pytest.mark.parametrize(

@@ -24,20 +24,6 @@ fn to_python<'py, T: serde::Serialize>(py: Python<'py>, value: &T) -> PyResult<B
 }
 
 #[pyfunction]
-fn polyglot_parse<'py>(
-    py: Python<'py>,
-    sql: &str,
-    dialect_name: &str,
-) -> PyResult<Vec<Bound<'py, PyAny>>> {
-    let dialect: Dialect = dialect(dialect_name)?;
-    let expressions: Vec<Expression> = py.detach(|| dialect.parse(sql)).map_err(failure)?;
-    expressions
-        .iter()
-        .map(|expression| to_python(py, expression))
-        .collect()
-}
-
-#[pyfunction]
 fn polyglot_parse_one<'py>(
     py: Python<'py>,
     sql: &str,
@@ -100,7 +86,6 @@ fn polyglot_analyze_query<'py>(
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("PolyglotError", module.py().get_type::<PolyglotError>())?;
-    module.add_function(wrap_pyfunction!(polyglot_parse, module)?)?;
     module.add_function(wrap_pyfunction!(polyglot_parse_one, module)?)?;
     module.add_function(wrap_pyfunction!(polyglot_generate_data_type, module)?)?;
     module.add_function(wrap_pyfunction!(polyglot_generate, module)?)?;
