@@ -1,8 +1,8 @@
 from unittest.mock import patch
 
-import polyglot_sql
 import pytest
 
+import sqltide._native as _native
 from sqltide.compiler.sql_analysis.classes.sql_reference_rewriter import (
     SqlReferenceRewriter,
 )
@@ -168,12 +168,12 @@ def test_given_repeated_targets_when_rewriting_then_bounds_polyglot_calls(
 ) -> None:
     with (
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.parse_one",
-            wraps=polyglot_sql.parse_one,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
+            wraps=_native.polyglot_parse_one,
         ) as parse_one,
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.generate",
-            wraps=polyglot_sql.generate,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
+            wraps=_native.polyglot_generate,
         ) as generate,
     ):
         _ = rewrite_references(
@@ -206,12 +206,12 @@ def test_given_shared_rewriter_when_rewriting_models_then_reuses_invocation_rela
     rewriter: SqlReferenceRewriter = SqlReferenceRewriter(dialect="clickhouse")
     with (
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.parse_one",
-            wraps=polyglot_sql.parse_one,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
+            wraps=_native.polyglot_parse_one,
         ) as parse_one,
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.generate",
-            wraps=polyglot_sql.generate,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
+            wraps=_native.polyglot_generate,
         ) as generate,
     ):
         _ = rewriter.rewrite(sql=test_case.first_sql, resolver=test_case.resolver)

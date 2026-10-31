@@ -13,7 +13,17 @@ publish = false
 rust-version = "1.88"
 
 [workspace.dependencies]
+# The SQL engine, pinned to the revision SQLBuild uses so both products parse ClickHouse alike.
+polyglot-sql = { git = "https://github.com/sqlstack-io/polyglot.git", rev = "8767d688c5b504ad609645e27ab77a260d91c5a1", default-features = false, features = [
+    "dialect-clickhouse",
+    "generate",
+    "semantic",
+    "stacker",
+] }
 pyo3 = { version = "0.26", features = ["abi3-py312"] }
+pythonize = "0.26"
+serde = "1"
+serde_json = "1"
 sqltide-sqltext = { path = "crates/sqltide-sqltext" }
 
 [workspace.lints.rust]

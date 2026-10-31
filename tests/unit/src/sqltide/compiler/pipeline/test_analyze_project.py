@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import Mock, patch
 
-import polyglot_sql
 import pytest
 
+import sqltide._native as _native
 from sqltide.adapter.models import AdapterManagedSource, AdapterTable
 from sqltide.adapters.clickhouse.classes.clickhouse_adapter import ClickHouseAdapter
 from sqltide.cli.compile.main._run_compile import run_compile
@@ -307,20 +307,20 @@ def test_given_complete_project_when_analyzing_then_polyglot_calls_remain_bounde
 
     with (
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.parse",
-            wraps=polyglot_sql.parse,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse",
+            wraps=_native.polyglot_parse,
         ) as parse,
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.parse_one",
-            wraps=polyglot_sql.parse_one,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_parse_one",
+            wraps=_native.polyglot_parse_one,
         ) as parse_one,
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.analyze_query",
-            wraps=polyglot_sql.analyze_query,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_analyze_query",
+            wraps=_native.polyglot_analyze_query,
         ) as analyze_query,
         patch(
-            "sqltide.compiler.sql_analysis._helpers.polyglot.polyglot_sql.generate",
-            wraps=polyglot_sql.generate,
+            "sqltide.compiler.sql_analysis._helpers.polyglot._native.polyglot_generate",
+            wraps=_native.polyglot_generate,
         ) as generate,
     ):
         analysis: CompileAnalysis = analyze_project(

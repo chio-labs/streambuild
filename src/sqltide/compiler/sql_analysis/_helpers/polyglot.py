@@ -7,8 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
-import polyglot_sql
-
+import sqltide._native as _native
 from sqltide.compiler.sql_analysis._helpers.aggregates import aggregate_key_name
 from sqltide.compiler.sql_analysis.constants import (
     CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES,
@@ -152,8 +151,7 @@ def parse_sql_trees(*, sql: str, dialect: str) -> tuple[dict[str, Any], ...]:
     """Parse SQL into private serialized Polyglot trees."""
 
     try:
-        expressions: list[Any] = polyglot_sql.parse(sql, dialect=dialect)
-        return tuple([expression.to_dict() for expression in expressions])
+        return tuple(_native.polyglot_parse(sql, dialect))
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be parsed with Polyglot: {error}") from None
 
@@ -162,36 +160,28 @@ def parse_sql_tree(*, sql: str, dialect: str) -> dict[str, Any]:
     """Parse exactly one SQL expression into a private serialized tree."""
 
     try:
-        expression: Any = polyglot_sql.parse_one(sql, dialect=dialect)
-        return expression.to_dict()
+        return _native.polyglot_parse_one(sql, dialect)
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be parsed with Polyglot: {error}") from None
-
-
-def parse_data_type_tree(*, sql: str, dialect: str) -> dict[str, Any]:
-    """Parse one data type into a private serialized Polyglot tree."""
-
-    try:
-        expression: Any = polyglot_sql.parse_data_type(sql, dialect=dialect)
-        return expression.to_dict()
-    except Exception as error:
-        raise SqlAnalysisError(
-            f"SQL data type could not be parsed with Polyglot: {error}"
-        ) from None
 
 
 def normalize_data_type_sql(*, sql: str, dialect: str) -> str:
     """Generate one data type with canonical ClickHouse type vocabulary."""
 
-    tree: dict[str, Any] = parse_data_type_tree(sql=sql, dialect=dialect)
-    return _canonicalize_type_tokens(generate_sql_tree(tree=tree, dialect=dialect))
+    try:
+        generated: str = _native.polyglot_generate_data_type(sql, dialect)
+    except Exception as error:
+        raise SqlAnalysisError(
+            f"SQL data type could not be parsed with Polyglot: {error}"
+        ) from None
+    return _canonicalize_type_tokens(generated)
 
 
 def analyze_query_facts(*, sql: str, dialect: str) -> dict[str, Any]:
     """Return one private compact Polyglot query-analysis payload."""
 
     try:
-        result: Any = polyglot_sql.analyze_query(sql, {"dialect": dialect})
+        result: Any = _native.polyglot_analyze_query(sql, dialect)
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be analyzed with Polyglot: {error}") from None
     if not isinstance(result, dict):
@@ -203,14 +193,9 @@ def generate_sql_tree(*, tree: dict[str, Any], dialect: str, pretty: bool = Fals
     """Generate exactly one SQL expression from a private serialized tree."""
 
     try:
-        generated: list[str] = polyglot_sql.generate(tree, dialect=dialect, pretty=pretty)
+        return _native.polyglot_generate(tree, dialect, pretty)
     except Exception as error:
         raise SqlAnalysisError(f"SQL could not be generated with Polyglot: {error}") from None
-    if len(generated) != 1:
-        raise SqlAnalysisError(
-            f"Polyglot generated {len(generated)} statements where exactly one was required"
-        )
-    return generated[0]
 
 
 def _copied_tree(node: Any) -> Any:
