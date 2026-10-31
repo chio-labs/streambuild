@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.41.11](https://github.com/sqlstack-io/sqltide/compare/v0.41.10...v0.41.11) (2026-10-31)
+
+
+### Maintenance
+
+* move repository links to the sqlstack-io organization ([#263](https://github.com/sqlstack-io/sqltide/issues/263)) ([3fbb1cc](https://github.com/sqlstack-io/sqltide/commit/3fbb1cc4591d9bb1b4c6f0b42f502de701bdfbbd))
+* stop tracking the root vitest cache ([#265](https://github.com/sqlstack-io/sqltide/issues/265)) ([3c2cd17](https://github.com/sqlstack-io/sqltide/commit/3c2cd17c6a3554e4ea349efdc61b5408099c3922))
+
 ## [0.41.10](https://github.com/chio-labs/streambuild/compare/v0.41.9...v0.41.10) (2026-10-26)
 
 
