@@ -174,7 +174,7 @@
 
 			<section class="flex gap-2.5 rounded-[4px] border border-border px-3.5 py-3 text-[11px] text-muted-foreground">
 				<InfoIcon size={13} class="mt-0.5 shrink-0" />
-				<p>Read-only point-in-time diagnostics from ClickHouse system tables. Memory values remain separately labelled when only server RSS and host capacity are available. StreamBuild does not retain metric history or perform remediation.</p>
+				<p>Read-only point-in-time diagnostics from ClickHouse system tables. Memory values remain separately labelled when only server RSS and host capacity are available. SQLTide does not retain metric history or perform remediation.</p>
 			</section>
 		</div>
 	{/if}

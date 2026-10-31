@@ -1,14 +1,14 @@
-# StreamBuild UI
+# SQLTide UI
 
-This SvelteKit application is the frontend served by `stb dev`. Production assets are built into
-`src/streambuild/dev_server/static` and included in the Python distribution.
+This SvelteKit application is the frontend served by `sqt dev`. Production assets are built into
+`src/sqltide/dev_server/static` and included in the Python distribution.
 
 ## Local Development
 
-Start the StreamBuild backend from a project directory:
+Start the SQLTide backend from a project directory:
 
 ```bash
-uv run stb dev
+uv run sqt dev
 ```
 
 Then start Vite in another terminal:

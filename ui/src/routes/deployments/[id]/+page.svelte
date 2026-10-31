@@ -362,7 +362,7 @@
 							</div>
 							<code
 								class="block rounded-[3px] border border-border bg-[var(--sb-hover)] px-2 py-1.5 text-[11.5px]"
-								>stb deployment rollback {detail.deploymentId}</code
+								>sqt deployment rollback {detail.deploymentId}</code
 							>
 						</div>
 					</div>
@@ -411,7 +411,7 @@
 								</div>
 							{/if}
 							<div class="text-[var(--sb-text-faint)] pt-2 font-mono text-[10.5px]">
-								stb deployment promote {detail.deploymentId}
+								sqt deployment promote {detail.deploymentId}
 							</div>
 						</div>
 					</div>

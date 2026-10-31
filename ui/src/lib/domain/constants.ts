@@ -31,8 +31,8 @@ export const SOURCE_KIND_LABEL: Record<string, string> = {
 };
 
 export const OWNERSHIP_LABEL: Record<string, string> = {
-	direct: 'owned by StreamBuild (direct)',
-	unmanaged: 'not owned by StreamBuild',
+	direct: 'owned by SQLTide (direct)',
+	unmanaged: 'not owned by SQLTide',
 	conflicted: 'owned by another mode',
 	absent: 'does not exist yet',
 	virtual_environment: 'owned by a virtual environment'

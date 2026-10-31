@@ -34,7 +34,7 @@ describe('project API', () => {
 
 	it('given cached definitions when the server returns not modified then the session copy is reused', async () => {
 		const storage: Map<string, string> = new Map([
-			['streambuild:definitions:version-1', '{"models":[{"name":"orders"}]}']
+			['sqltide:definitions:version-1', '{"models":[{"name":"orders"}]}']
 		]);
 		vi.stubGlobal('sessionStorage', {
 			getItem: (key: string) => storage.get(key) ?? null,
@@ -105,12 +105,12 @@ describe('project API', () => {
 			headers: undefined,
 			signal: undefined
 		});
-		expect(setItem).toHaveBeenCalledWith('streambuild:definitions:version-1', '{"models":[]}');
+		expect(setItem).toHaveBeenCalledWith('sqltide:definitions:version-1', '{"models":[]}');
 	});
 
 	it('given stale definition versions when caching a new version then only the current snapshot remains', async () => {
 		const storage: Map<string, string> = new Map([
-			['streambuild:definitions:old-version', '{"models":[{"name":"old"}]}'],
+			['sqltide:definitions:old-version', '{"models":[{"name":"old"}]}'],
 			['unrelated', 'preserved']
 		]);
 		vi.stubGlobal('sessionStorage', {
@@ -128,7 +128,7 @@ describe('project API', () => {
 
 		expect([...storage.entries()]).toEqual([
 			['unrelated', 'preserved'],
-			['streambuild:definitions:new-version', '{"models":[]}']
+			['sqltide:definitions:new-version', '{"models":[]}']
 		]);
 	});
 });

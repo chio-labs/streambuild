@@ -5,15 +5,15 @@ from __future__ import annotations
 from scripts.cli_output_preview_support._helpers.plan_fixtures import (
     build_plan_preview,
 )
-from streambuild.compiler.compile.models import ObjectKey
-from streambuild.executor.backfill.models import (
+from sqltide.compiler.compile.models import ObjectKey
+from sqltide.executor.backfill.models import (
     BackfillBootstrapResult,
     BackfillExecutionResult,
     BackfillRootReplayResult,
     RootBackfillReport,
 )
-from streambuild.executor.promotion.models import PublishedView, PublishResult
-from streambuild.executor.readiness.models import (
+from sqltide.executor.promotion.models import PublishedView, PublishResult
+from sqltide.executor.readiness.models import (
     AuditDeploymentCandidate,
     DeploymentAuditResult,
     RootAuditResult,

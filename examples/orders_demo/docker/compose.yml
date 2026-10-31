@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-streambuild-orders-demo}
+name: ${COMPOSE_PROJECT_NAME:-sqltide-orders-demo}
 
 services:
   redpanda:
@@ -84,10 +84,10 @@ services:
     image: clickhouse/clickhouse-server:25.8
     environment:
       CLICKHOUSE_DB: orders_demo
-      CLICKHOUSE_USER: ${STREAMBUILD_CLICKHOUSE_USERNAME:-clickhouse}
-      CLICKHOUSE_PASSWORD: ${STREAMBUILD_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_USER: ${SQLTIDE_CLICKHOUSE_USERNAME:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${SQLTIDE_CLICKHOUSE_PASSWORD:-clickhouse}
     ports:
-      - "127.0.0.1:${STREAMBUILD_CLICKHOUSE_PORT:-18123}:8123"
+      - "127.0.0.1:${SQLTIDE_CLICKHOUSE_PORT:-18123}:8123"
       - "127.0.0.1:${CLICKHOUSE_NATIVE_PORT:-19000}:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse

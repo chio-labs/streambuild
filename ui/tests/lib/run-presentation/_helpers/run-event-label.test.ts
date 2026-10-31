@@ -6,7 +6,7 @@ import { labelRunPhase } from '$lib/run-presentation/_helpers/run-phase-label';
 import type { RunEventLabelContext } from '$lib/run-presentation/types';
 
 const context: RunEventLabelContext = {
-	displayCommand: 'stb destroy pipelines',
+	displayCommand: 'sqt destroy pipelines',
 	metadataPreparationCount: 0,
 	metadataMigrationCount: 0,
 	candidateMetadataCount: 0,

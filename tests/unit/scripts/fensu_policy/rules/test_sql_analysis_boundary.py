@@ -12,31 +12,31 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
     [
         CustomRuleTestCase(
             description="runtime outside SQL analysis importing Polyglot faults",
-            path="src/streambuild/compiler/compile/_helpers/transforms.py",
+            path="src/sqltide/compiler/compile/_helpers/transforms.py",
             source="import polyglot_sql\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="SQL analysis importing Polyglot passes",
-            path="src/streambuild/compiler/sql_analysis/_helpers/polyglot.py",
+            path="src/sqltide/compiler/sql_analysis/_helpers/polyglot.py",
             source="import polyglot_sql\n",
             expected_fault_count=0,
         ),
         CustomRuleTestCase(
             description="SQL analysis importing removed engine faults",
-            path="src/streambuild/compiler/sql_analysis/_helpers/polyglot.py",
+            path="src/sqltide/compiler/sql_analysis/_helpers/polyglot.py",
             source="from sqlglot import parse_one\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="runtime importing removed engine faults",
-            path="src/streambuild/compiler/compile/_helpers/sql_contract.py",
+            path="src/sqltide/compiler/compile/_helpers/sql_contract.py",
             source="from sqlglot import parse_one\n",
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="dynamic Polyglot import outside boundary faults",
-            path="src/streambuild/compiler/compile/_helpers/transforms.py",
+            path="src/sqltide/compiler/compile/_helpers/transforms.py",
             source=dedent(
                 """
                 import importlib
@@ -48,13 +48,13 @@ from tests.unit.scripts.fensu_policy.rules._test_types import CustomRuleTestCase
         ),
         CustomRuleTestCase(
             description="dynamic removed engine import inside boundary faults",
-            path="src/streambuild/compiler/sql_analysis/_helpers/polyglot.py",
+            path="src/sqltide/compiler/sql_analysis/_helpers/polyglot.py",
             source='__import__("sqlglot.expressions")\n',
             expected_fault_count=1,
         ),
         CustomRuleTestCase(
             description="dynamic removed engine import outside boundary faults",
-            path="src/streambuild/compiler/compile/_helpers/transforms.py",
+            path="src/sqltide/compiler/compile/_helpers/transforms.py",
             source='importlib.import_module("sqlglot")\n',
             expected_fault_count=1,
         ),

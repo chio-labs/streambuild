@@ -483,7 +483,7 @@ export function planFromServer(payload: Payload, adapter: string): Plan {
 		})),
 		replayWindow: (payload.replayWindow as Plan['replayWindow']) ?? { mode: 'full' },
 		plannedAt: (payload.plannedAt as string) ?? '',
-		command: (payload.command as string) ?? 'stb build',
+		command: (payload.command as string) ?? 'sqt build',
 		executionOrder: ((payload.executionOrder as string[]) ?? []).filter(
 			(item): item is Plan['executionOrder'][number] => item === 'direct' || item === 'virtual'
 		),
@@ -561,7 +561,7 @@ function retentionDaysFromSource(source: Payload): number | null {
 }
 
 /**
- * Fold recorded outcomes from `_streambuild_node_results` into the project.
+ * Fold recorded outcomes from `_sqltide_node_results` into the project.
  * CLI runs and UI runs share that history, so a refresh no longer forgets what
  * passed. Never overwrites a FRESHER in-session run.
  */

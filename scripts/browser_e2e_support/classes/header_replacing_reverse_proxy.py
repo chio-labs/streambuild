@@ -50,7 +50,7 @@ def _proxy_handler(*, upstream_port: int, username: str) -> type[BaseHTTPRequest
                 if name.casefold() not in PROXY_STRIPPED_REQUEST_HEADERS
             }
             headers["Host"] = f"127.0.0.1:{upstream_port}"
-            headers["X-StreamBuild-User"] = username
+            headers["X-SQLTide-User"] = username
             upstream: HTTPConnection = HTTPConnection("127.0.0.1", upstream_port, timeout=15)
             try:
                 upstream.request(self.command, self.path, body=body, headers=headers)

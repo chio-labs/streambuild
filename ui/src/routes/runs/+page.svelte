@@ -19,7 +19,7 @@
 	const cancelAllowed = $derived(canAnyPipeline('build.cancel'));
 	const history = createRunHistoryState();
 
-	// Recorded CLI invocation history from `_streambuild_invocations`. Runs
+	// Recorded CLI invocation history from `_sqltide_invocations`. Runs
 	// happen out-of-band in a shell, so poll while the page is visible — a
 	// build finished in another terminal should appear without re-navigating.
 	let loadError = $state<string | null>(null);
@@ -231,7 +231,7 @@
 				<p class="text-muted-foreground text-[13px]">
 					{#if runs.length === 0}
 						No recorded runs. History appears after the first
-						<code class="code text-[12px]">stb build</code> against this database.
+						<code class="code text-[12px]">sqt build</code> against this database.
 					{:else}
 						No {statusFilter === 'all' ? '' : `${statusFilter} `}{scopeLabel(scope)}.
 					{/if}
@@ -240,7 +240,7 @@
 		{:else}
 			<!-- Column set follows Dagster's runs table (ID+tags / target / status /
 			     created / duration), except the selection column is named Command:
-			     "target" already means the dev/prod profile in StreamBuild. -->
+			     "target" already means the dev/prod profile in SQLTide. -->
 			<table class="sb-list w-full text-left md:table-fixed">
 				<thead class="sticky top-0 z-10">
 					<tr class="text-[var(--sb-text-faint)] font-mono text-[10px] uppercase tracking-[0.12em]">
@@ -277,9 +277,9 @@
 							</td>
 							<td class="hidden px-3 align-top md:table-cell">
 								<div class="code pt-0.5 text-[12px]">
-									{run.displayCommand?.startsWith('stb ')
+									{run.displayCommand?.startsWith('sqt ')
 										? run.displayCommand
-										: `stb ${run.displayCommand ?? run.command}`}
+										: `sqt ${run.displayCommand ?? run.command}`}
 								</div>
 								{#if displayedError}
 									<ErrorPreview

@@ -386,7 +386,7 @@
 }
 
 /* ── graph edges ───────────────────────────────────────────────────────────
-   Edge type carries meaning in StreamBuild, so it gets real visual weight:
+   Edge type carries meaning in SQLTide, so it gets real visual weight:
      driving_input      the single streaming spine — heavy, animated when flowing
      reference          an ordinary side dependency — thin
      mutable_reference  emits a replay warning and disqualifies the anchor — amber
@@ -425,7 +425,7 @@
 	stroke-width: 1.25px;
 }
 /*
- * A read by a terminal view. StreamBuild types these `reference` like any side
+ * A read by a terminal view. SQLTide types these `reference` like any side
  * lookup, because a view has no driving input to contrast them with — but a
  * view's refs are not incidental, they ARE the view. Full weight so it does not
  * read as barely attached; solid, because the dash is reserved for driving.

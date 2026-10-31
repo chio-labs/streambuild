@@ -6,8 +6,8 @@ export function parseRunCommand(raw: string, target: string): ParsedRunCommand {
 	const tokenized: ShellTokenization = shellTokens(raw);
 	if (tokenized.error !== null) return commandError(tokenized.error);
 	const tokens: string[] = tokenized.tokens.map((token) => token.value);
-	if (tokens[0] !== 'stb' || tokens[1] !== 'build') {
-		return commandError('command must start with `stb build`');
+	if (tokens[0] !== 'sqt' || tokens[1] !== 'build') {
+		return commandError('command must start with `sqt build`');
 	}
 	const selectors: string[] = [];
 	const confirmations: string[] = [];
@@ -20,7 +20,7 @@ export function parseRunCommand(raw: string, target: string): ParsedRunCommand {
 		);
 		if (pinnedFlag !== undefined) {
 			return commandError(
-				`${pinnedFlag} is fixed by stb dev and cannot be overridden from the UI (target ${target})`
+				`${pinnedFlag} is fixed by sqt dev and cannot be overridden from the UI (target ${target})`
 			);
 		}
 		if (token === '--select' && tokens[index + 1] && !isFlag(tokens[index + 1])) {

@@ -22,8 +22,8 @@
 	<div class="flex items-start gap-2.5 border-b border-border px-[18px] py-2.5">
 		<LockIcon size={13} class="text-muted-foreground mt-[2px] shrink-0" />
 		<p class="text-muted-foreground text-[12.5px]">
-			Read-only — from <code class="font-mono text-[11.5px]">streambuild_project.toml</code> and
-			<code class="font-mono text-[11.5px]">streambuild_local.toml</code>.
+			Read-only — from <code class="font-mono text-[11.5px]">sqltide_project.toml</code> and
+			<code class="font-mono text-[11.5px]">sqltide_local.toml</code>.
 		</p>
 	</div>
 
@@ -39,7 +39,7 @@
 			<FactRow label="Database" value={project.database} mono />
 			<FactRow label="Adapter" value={project.adapter} mono />
 			{#if app.status?.toolVersion}
-				<FactRow label="StreamBuild version" value={app.status.toolVersion} mono />
+				<FactRow label="SQLTide version" value={app.status.toolVersion} mono />
 			{/if}
 		</div>
 

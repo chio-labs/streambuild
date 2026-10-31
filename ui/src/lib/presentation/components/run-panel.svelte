@@ -48,7 +48,7 @@
 	const commandErrorId = 'run-command-error';
 
 	const seed = $derived(
-		`stb build${selection.length ? ` --select ${selection.join(' ')}` : ''} --auto-approve`
+		`sqt build${selection.length ? ` --select ${selection.join(' ')}` : ''} --auto-approve`
 	);
 
 	$effect(() => {
@@ -368,7 +368,7 @@
 						onkeydown={onCommandKeydown}
 						spellcheck="false"
 						class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2.5 py-2 font-mono text-[12px] outline-none focus:border-[var(--primary)]"
-						placeholder="stb build --select orders --auto-approve"
+						placeholder="sqt build --select orders --auto-approve"
 					/>
 					{#if visibleSuggestions.length > 0}
 						<div

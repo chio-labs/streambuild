@@ -14,7 +14,7 @@ revision will fail before tests start.
   `uvx --from uv@0.12.3 uv sync --locked --all-groups`
 - After syncing, run tools directly from `.venv/bin/` when practical so the
   old system uv cannot rewrite the lockfile.
-- Keep the editable `streambuild` package version in `uv.lock` equal to the
+- Keep the editable `sqltide` package version in `uv.lock` equal to the
   version in `pyproject.toml`.
 - Never restore `uv.lock` merely because the local old uv changed it. First
   regenerate it with modern uv and inspect the resulting diff.

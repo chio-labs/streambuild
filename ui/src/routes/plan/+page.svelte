@@ -219,7 +219,7 @@
 					</div>
 					<input
 						bind:value={pasted}
-						placeholder="stb build --select pipeline:order_events"
+						placeholder="sqt build --select pipeline:order_events"
 						class="bg-[var(--sb-inset)] w-full rounded-[4px] border border-border px-2.5 py-1.5 font-mono text-[11.5px] outline-none focus:border-[var(--primary)]"
 						onkeydown={(event) => {
 							if (event.key === 'Enter') previewPasted();

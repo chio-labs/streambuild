@@ -100,7 +100,7 @@
 					Reset {target} / {database}
 				</h3>
 				<p class="text-muted-foreground mt-1 text-[11.5px]">
-					Remove all StreamBuild-managed resources in this target, regardless of the current pipeline selection.
+					Remove all SQLTide-managed resources in this target, regardless of the current pipeline selection.
 				</p>
 				<label
 					for="acknowledge-target-reset"
@@ -114,7 +114,7 @@
 						disabled={!resetAllowed}
 						aria-label="Acknowledge entire target reset"
 					/>
-					<span>I understand this resets the entire target and removes all StreamBuild-managed resources.</span>
+					<span>I understand this resets the entire target and removes all SQLTide-managed resources.</span>
 				</label>
 				<Button
 					variant="destructive"

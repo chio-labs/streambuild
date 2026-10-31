@@ -20,7 +20,7 @@
 	// over one value. Here the command string is a read-only receipt.
 	//
 	// A text-command input would also buy nothing: `plan`/`build` accept only a
-	// bare model name or `pipeline:<name>`, and StreamBuild has no tags, groups or
+	// bare model name or `pipeline:<name>`, and SQLTide has no tags, groups or
 	// globs to query on. This is a finite checklist, so it gets a picker.
 	let query = $state<string>('');
 	let open = $state<boolean>(false);

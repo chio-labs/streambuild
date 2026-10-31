@@ -1,1 +1,1 @@
-"""Unit tests for StreamBuild's custom Fensu rules."""
+"""Unit tests for SQLTide's custom Fensu rules."""

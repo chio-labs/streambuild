@@ -83,7 +83,7 @@
 						{formatInteger(managedCount)}
 					</div>
 					<div class="text-[var(--sb-text-faint)] pt-1 font-mono text-[10px] uppercase tracking-[0.14em]">
-						managed by StreamBuild
+						managed by SQLTide
 					</div>
 				</div>
 				{#if payload && payload.pendingBrokers.length > 0}

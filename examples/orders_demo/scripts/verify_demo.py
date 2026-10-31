@@ -10,8 +10,8 @@ from urllib import request
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 CLICKHOUSE_URL = (
-    f"http://{os.getenv('STREAMBUILD_CLICKHOUSE_HOST', 'localhost')}:"
-    f"{os.getenv('STREAMBUILD_CLICKHOUSE_PORT', '18123')}/?database=orders_demo"
+    f"http://{os.getenv('SQLTIDE_CLICKHOUSE_HOST', 'localhost')}:"
+    f"{os.getenv('SQLTIDE_CLICKHOUSE_PORT', '18123')}/?database=orders_demo"
 )
 STATE_URL = "http://127.0.0.1:8000/api/state"
 TOPIC = "source.order_events.live"
@@ -25,8 +25,8 @@ def clickhouse_row(query: str) -> dict[str, object]:
             "Authorization": "Basic "
             + base64.b64encode(
                 (
-                    f"{os.getenv('STREAMBUILD_CLICKHOUSE_USERNAME', 'clickhouse')}:"
-                    f"{os.getenv('STREAMBUILD_CLICKHOUSE_PASSWORD', 'clickhouse')}"
+                    f"{os.getenv('SQLTIDE_CLICKHOUSE_USERNAME', 'clickhouse')}:"
+                    f"{os.getenv('SQLTIDE_CLICKHOUSE_PASSWORD', 'clickhouse')}"
                 ).encode()
             ).decode("ascii")
         },

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from streambuild.adapter.models import AdapterReplayColumns
-from streambuild.compiler.compile.models import (
+from sqltide.adapter.models import AdapterReplayColumns
+from sqltide.compiler.compile.models import (
     Column,
     DesiredMaterializedView,
     DesiredState,
@@ -14,13 +14,13 @@ from streambuild.compiler.compile.models import (
     TableSpec,
     TableStorage,
 )
-from streambuild.compiler.compile.types import LogicalResourceType
-from streambuild.compiler.discovery.models import (
+from sqltide.compiler.compile.types import LogicalResourceType
+from sqltide.compiler.discovery.models import (
     ReplayOnChangePolicy,
     ReplayOnChangeRule,
 )
-from streambuild.compiler.discovery.types import ReplayLineageMode
-from streambuild.compiler.planner.models import (
+from sqltide.compiler.discovery.types import ReplayLineageMode
+from sqltide.compiler.planner.models import (
     DeploymentPlan,
     DeploymentStep,
     DirectPlan,
@@ -34,7 +34,7 @@ from streambuild.compiler.planner.models import (
     PreparedShadowObject,
     RebuildSubtree,
 )
-from streambuild.compiler.planner.types import (
+from sqltide.compiler.planner.types import (
     DirectPlanReason,
     DirectRelationAction,
     DirectResourceKind,

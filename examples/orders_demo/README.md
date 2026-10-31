@@ -1,6 +1,6 @@
 # Commerce Events Demo
 
-A local StreamBuild V2 demo built around one fixed commerce-event contract. Redpanda retains the
+A local SQLTide V2 demo built around one fixed commerce-event contract. Redpanda retains the
 events, ClickHouse serves the pipeline, and the bundled producer has no external dependencies or
 network side effects beyond the local Kafka broker.
 
@@ -34,7 +34,7 @@ errors after two minutes.
 
 ## Workflow
 
-Prerequisites: Docker with Compose, Node.js 20.19 or newer, npm, and the repository's `stb`
+Prerequisites: Docker with Compose, Node.js 20.19 or newer, npm, and the repository's `sqt`
 environment with generated UI assets installed:
 
 ```bash
@@ -46,8 +46,8 @@ make start
 ```
 
 `make start` builds the producer image, waits for healthy Redpanda and ClickHouse services, creates
-`source.order_events.live` with three partitions, starts the producer, and applies the StreamBuild
-project. The Compose project identity defaults to `streambuild-orders-demo`; every published port is
+`source.order_events.live` with three partitions, starts the producer, and applies the SQLTide
+project. The Compose project identity defaults to `sqltide-orders-demo`; every published port is
 bound to `127.0.0.1`. The shared `redpanda.localhost:19092` broker name resolves to loopback for
 host-side Topics and lag reads and to the Redpanda container for ClickHouse ingestion.
 
@@ -67,7 +67,7 @@ make dev
 Run the focused SQL tests independently:
 
 ```bash
-stb test --project-dir .
+sqt test --project-dir .
 ```
 
 With `make dev` still running, verify the topic contract, logical event cardinality, region labels,
@@ -109,10 +109,10 @@ and the console prints `RECOVERED`. Change
 The Make targets are wrappers around these project operations:
 
 ```bash
-stb compile --project-dir .
-stb plan --project-dir .
-stb build --project-dir .
-stb audit --project-dir .
+sqt compile --project-dir .
+sqt plan --project-dir .
+sqt build --project-dir .
+sqt audit --project-dir .
 ```
 
 The project intentionally uses direct mode so a first run has no deployment or promotion step.

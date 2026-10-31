@@ -8,7 +8,7 @@ from scripts.fensu_policy.classes.workflow_authority_policy import (
 
 
 @rule(
-    code="XSTB004",
+    code="XSQT004",
     family=Family.CUSTOM,
     slug="workflow-mutation-gateway",
     message="warehouse mutations must pass through the workflow gateway",
@@ -23,7 +23,7 @@ def workflow_mutation_gateway(*, module: object, ctx: RuleContext) -> list[Fault
 
 
 @rule(
-    code="XSTB005",
+    code="XSQT005",
     family=Family.CUSTOM,
     slug="published-workflow-capability",
     message="build execution requires the artifact publication capability",
@@ -38,7 +38,7 @@ def published_workflow_capability(*, module: object, ctx: RuleContext) -> list[F
 
 
 @rule(
-    code="XSTB006",
+    code="XSQT006",
     family=Family.CUSTOM,
     slug="workflow-consumer-purity",
     message="workflow consumers must not derive SQL or execution order",
@@ -53,7 +53,7 @@ def workflow_consumer_purity(*, module: object, ctx: RuleContext) -> list[Fault]
 
 
 @rule(
-    code="XSTB007",
+    code="XSQT007",
     family=Family.CUSTOM,
     slug="workflow-statement-ownership",
     message="workflow statements must be constructed by approved command assemblers",

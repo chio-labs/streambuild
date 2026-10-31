@@ -238,7 +238,7 @@
 			</p>
 		{:else if !selectionSpecified}
 			<p class="text-muted-foreground text-[12px]">
-				Choose at least one model or pipeline to set a start time. StreamBuild requires
+				Choose at least one model or pipeline to set a start time. SQLTide requires
 				<code class="code">--start-time</code> to be scoped by <code class="code">--select</code>.
 			</p>
 		{:else if !hasRetentionWindow}

@@ -8,7 +8,7 @@ from scripts.fensu_policy.classes.observability_authority_policy import (
 
 
 @rule(
-    code="XSTB008",
+    code="XSQT008",
     family=Family.CUSTOM,
     slug="observability-non-authority",
     message="planner and lifecycle code must not read non-authoritative observability history",

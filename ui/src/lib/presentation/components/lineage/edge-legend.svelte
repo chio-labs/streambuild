@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Edge type is load-bearing in StreamBuild — the single driving input is the
+	// Edge type is load-bearing in SQLTide — the single driving input is the
 	// streaming spine, and a mutable reference disqualifies a replay anchor — so
 	// every canvas that draws edges needs this.
 	type Props = { compact?: boolean };

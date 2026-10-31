@@ -10,12 +10,12 @@ from scripts.fensu_policy.constants import (
 
 
 @rule(
-    code="XSTB009",
+    code="XSQT009",
     family=Family.CUSTOM,
     slug="event-catalog-authority",
-    message="sensor events are constructed only inside the streambuild.events catalog",
+    message="sensor events are constructed only inside the sqltide.events catalog",
     remediation=(
-        "Derive events from persisted observations via streambuild.events entry points; "
+        "Derive events from persisted observations via sqltide.events entry points; "
         "handlers consume events and never construct or re-emit them."
     ),
 )

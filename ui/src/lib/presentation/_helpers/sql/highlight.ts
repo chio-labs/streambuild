@@ -1,6 +1,6 @@
-// StreamBuild-aware syntax highlighting.
+// SQLTide-aware syntax highlighting.
 //
-// StreamBuild SQL is a superset of ClickHouse SQL with TWO header dialects, which
+// SQLTide SQL is a superset of ClickHouse SQL with TWO header dialects, which
 // is why no stock grammar can render it:
 //
 //   MODEL (...)   whitespace-separated `key value`, lists [...], nested maps (...),
@@ -19,7 +19,7 @@ import 'prismjs/components/prism-sql';
 
 let registered = false;
 
-/** MODEL() header fields — StreamBuild's ALLOWED_MODEL_KEYS, and nothing else. */
+/** MODEL() header fields — SQLTide's ALLOWED_MODEL_KEYS, and nothing else. */
 const MODEL_HEADER_KEYS: string[] = [
 	'kind',
 	'relation_name',
@@ -88,14 +88,14 @@ function alternation(words: string[]): string {
 	return words.join('|');
 }
 
-export function ensureStreambuildGrammar(): void {
+export function ensureSQLTideGrammar(): void {
 	if (registered) return;
 	registered = true;
 
-	const streambuild: Prism.Grammar = Prism.languages.extend('sql', {});
+	const sqltide: Prism.Grammar = Prism.languages.extend('sql', {});
 
 	// Reference functions: __source("orders"), __ref("orders", ref_type="reference")
-	Prism.languages.insertBefore('streambuild', 'function', {
+	Prism.languages.insertBefore('sqltide', 'function', {
 		'sb-ref': {
 			pattern: /\b__(?:source|ref)\b(?=\s*\()/,
 			alias: 'function'
@@ -107,7 +107,7 @@ export function ensureStreambuildGrammar(): void {
 		}
 	});
 
-	Prism.languages.insertBefore('streambuild', 'keyword', {
+	Prism.languages.insertBefore('sqltide', 'keyword', {
 		// Block openers — MODEL ( / AUDIT ( / TEST ( / EXPECT ZERO ROWS
 		'sb-block': {
 			pattern: new RegExp(`\\b(?:${alternation(BLOCK_KEYWORDS)})\\b`),
@@ -144,10 +144,10 @@ export function ensureStreambuildGrammar(): void {
 		}
 	});
 
-	Reflect.set(Prism.languages, 'streambuild', streambuild);
+	Reflect.set(Prism.languages, 'sqltide', sqltide);
 }
 
-export function highlightStreambuild(code: string): string {
-	ensureStreambuildGrammar();
-	return Prism.highlight(code, Prism.languages.streambuild, 'streambuild');
+export function highlightSQLTide(code: string): string {
+	ensureSQLTideGrammar();
+	return Prism.highlight(code, Prism.languages.sqltide, 'sqltide');
 }

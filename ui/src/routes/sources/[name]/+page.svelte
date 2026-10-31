@@ -68,7 +68,7 @@
 				><ArrowLeftIcon size={12} /> Sources</a
 			>
 			<span class="text-[var(--sb-text-faint)]">/</span>
-			<span class="sb-tag">{source.kind === 'kafka' ? 'managed by StreamBuild' : 'adopted'}</span>
+			<span class="sb-tag">{source.kind === 'kafka' ? 'managed by SQLTide' : 'adopted'}</span>
 			<span class="sb-tag code">{source.boundaryMode}</span>
 			{#if source.kind === 'kafka'}
 				<a

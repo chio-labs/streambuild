@@ -48,7 +48,7 @@ clickhouse_db/
 data/
 
 # Demo-local secrets
-streambuild_local.toml
+sqltide_local.toml
 examples/flights_demo/.env
 examples/orders_demo/pipelines/target
 examples/orders_demo/target
@@ -59,4 +59,4 @@ examples/orders_demo/target
 node_modules/
 ui/.svelte-kit/
 ui/build/
-src/streambuild/dev_server/static/
+src/sqltide/dev_server/static/

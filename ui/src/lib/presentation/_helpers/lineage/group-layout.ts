@@ -4,7 +4,7 @@
  *
  * dagre has no compound/cluster support, so this is the standard workaround.
  *
- * On cycles: StreamBuild's MODEL graph is a DAG, but collapsing it can produce a
+ * On cycles: SQLTide's MODEL graph is a DAG, but collapsing it can produce a
  * cycle in the group graph — `a1 → b1 → a2` with a1,a2 ∈ A and b1 ∈ B is a legal
  * chain yet yields A→B and B→A. dagre handles that itself (its `acyclic` phase
  * reverses cycle edges, ranks, then restores true direction), so nothing here

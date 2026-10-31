@@ -17,15 +17,15 @@ from scripts.cli_output_preview_support._helpers.result_fixtures import (
     build_publish_preview,
 )
 from scripts.cli_output_preview_support.models import PreviewRequest
-from streambuild.adapters.clickhouse.constants import CLICKHOUSE_ADAPTER_NAME
-from streambuild.cli.build.main.render_virtual_build_result import render_virtual_build_result
-from streambuild.cli.plan.main.render_direct_plan_text import render_direct_plan_text
-from streambuild.cli.plan.main.render_plan_result import render_plan_result
-from streambuild.cli.promotion.main.render_promotion_result import render_promotion_result
-from streambuild.cli.readiness.main.render_ambiguous_deployment_message import (
+from sqltide.adapters.clickhouse.constants import CLICKHOUSE_ADAPTER_NAME
+from sqltide.cli.build.main.render_virtual_build_result import render_virtual_build_result
+from sqltide.cli.plan.main.render_direct_plan_text import render_direct_plan_text
+from sqltide.cli.plan.main.render_plan_result import render_plan_result
+from sqltide.cli.promotion.main.render_promotion_result import render_promotion_result
+from sqltide.cli.readiness.main.render_ambiguous_deployment_message import (
     render_ambiguous_deployment_message,
 )
-from streambuild.cli.readiness.main.render_deployment_audit_result import (
+from sqltide.cli.readiness.main.render_deployment_audit_result import (
     render_deployment_audit_result,
 )
 

@@ -1,1 +1,1 @@
-"""Unit tests for StreamBuild's Fensu policy."""
+"""Unit tests for SQLTide's Fensu policy."""
