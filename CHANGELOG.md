@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/sqlstack-io/sqltide/compare/v0.43.0...v0.44.0) (2026-10-31)
+
+
+### Features
+
+* scan SQL lexically in Rust ([#270](https://github.com/sqlstack-io/sqltide/issues/270)) ([196e530](https://github.com/sqlstack-io/sqltide/commit/196e530cd278c6bc9634999220a4af23956bc79e))
+
 ## [0.43.0](https://github.com/sqlstack-io/sqltide/compare/v0.42.0...v0.43.0) (2026-10-31)
 
 
