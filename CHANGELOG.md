@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/sqlstack-io/sqltide/compare/v0.42.0...v0.43.0) (2026-10-31)
+
+
+### Features
+
+* parse MODEL headers natively in Rust ([#268](https://github.com/sqlstack-io/sqltide/issues/268)) ([3b8adf7](https://github.com/sqlstack-io/sqltide/commit/3b8adf70cd304b4f970020e6d35a9d7ebb24b78d))
+
 ## [0.42.0](https://github.com/sqlstack-io/sqltide/compare/v0.41.10...v0.42.0) (2026-10-31)
 
 
