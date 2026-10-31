@@ -1,0 +1,384 @@
+{
+  "artifacts": {
+    "compiled/models/pl__order_events/orders.sql": [
+      "SELECT",
+      "  JSONExtractString(kafka_value, 'order_id')::String AS order_id,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM raw__order_events"
+    ],
+    "compiled/resources/models/pl__order_events/orders.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders",
+      "TO analytics.tbl__orders AS",
+      "SELECT",
+      "  JSONExtractString(kafka_value, 'order_id')::String AS order_id,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM analytics.raw__order_events"
+    ],
+    "compiled/resources/models/pl__order_events/orders.table.sql": [
+      "CREATE TABLE analytics.tbl__orders (",
+      "    order_id String,",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id, _replay_landed_at)"
+    ],
+    "compiled/resources/sources/order_events/kafka__order_events.sql": [
+      "CREATE TABLE analytics.kafka__order_events (",
+      "    message String",
+      ") ENGINE = Kafka",
+      "SETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.order_events.created', kafka_group_name = 'streambuild_e2e_kafka_landed_at_project_test_order_events_analytics', kafka_format = 'JSONAsString'"
+    ],
+    "compiled/resources/sources/order_events/mv__order_events.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__order_events",
+      "TO analytics.raw__order_events AS",
+      "SELECT",
+      "  _key AS kafka_key,",
+      "  message AS kafka_value,",
+      "  _topic AS kafka_topic,",
+      "  _partition AS kafka_partition,",
+      "  _offset AS kafka_offset,",
+      "  _timestamp_ms AS kafka_timestamp,",
+      "  _partition AS _replay_partition,",
+      "  _offset AS _replay_offset,",
+      "  _timestamp_ms AS _replay_timestamp,",
+      "  _headers.name AS kafka_header_keys,",
+      "  _headers.value AS kafka_header_values,",
+      "  now64(3) AS kafka_landed_at,",
+      "  now64(3) AS _replay_landed_at",
+      "FROM analytics.kafka__order_events"
+    ],
+    "compiled/resources/sources/order_events/raw__order_events.sql": [
+      "CREATE TABLE analytics.raw__order_events (",
+      "    kafka_key String,",
+      "    kafka_value String,",
+      "    kafka_topic String,",
+      "    kafka_partition Int32,",
+      "    kafka_offset Int64,",
+      "    kafka_timestamp Nullable(DateTime64(3)),",
+      "    _replay_partition Int32,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp Nullable(DateTime64(3)),",
+      "    kafka_header_keys Array(String),",
+      "    kafka_header_values Array(String),",
+      "    kafka_landed_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (_replay_partition, _replay_offset)"
+    ],
+    "manifest.json": {
+      "artifacts": [
+        "manifest.json",
+        "sqltide_dag.json",
+        "compiled/models/pl__order_events/orders.sql",
+        "compiled/resources/models/pl__order_events/orders.mv.sql",
+        "compiled/resources/models/pl__order_events/orders.table.sql",
+        "compiled/resources/sources/order_events/kafka__order_events.sql",
+        "compiled/resources/sources/order_events/mv__order_events.sql",
+        "compiled/resources/sources/order_events/raw__order_events.sql"
+      ],
+      "audits": {},
+      "dependencies": {
+        "allowed_cross_pipeline_references": [],
+        "model_reference_scope": "project"
+      },
+      "macros": {},
+      "metadata": {
+        "manifest_version": 1,
+        "tool": "sqltide"
+      },
+      "models": {
+        "orders": {
+          "logical_key": "model:orders",
+          "name": "orders",
+          "pipeline": "pl__order_events",
+          "query_path": "compiled/models/pl__order_events/orders.sql",
+          "refs": [
+            "order_events"
+          ],
+          "relation_name": "tbl__orders",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__orders",
+              "path": "compiled/resources/models/pl__order_events/orders.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders",
+              "path": "compiled/resources/models/pl__order_events/orders.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "order_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id",
+              "_replay_landed_at"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        }
+      },
+      "pipelines": {
+        "pl__order_events": {
+          "file": "pipelines/pl__order_events",
+          "models": [
+            "orders"
+          ],
+          "name": "pl__order_events",
+          "relations": {
+            "order_events": "raw__order_events",
+            "orders": "tbl__orders"
+          },
+          "replay_lineage_mode": "landed_at",
+          "resolved_database": "analytics",
+          "source_name": "order_events"
+        }
+      },
+      "sources": {
+        "order_events": {
+          "logical_key": "source:order_events",
+          "name": "order_events",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "raw__order_events",
+          "replay_lineage_mode": "landed_at",
+          "resources": [
+            {
+              "kind": "managed_source",
+              "name": "kafka__order_events",
+              "path": "compiled/resources/sources/order_events/kafka__order_events.sql"
+            },
+            {
+              "kind": "table",
+              "name": "raw__order_events",
+              "path": "compiled/resources/sources/order_events/raw__order_events.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__order_events",
+              "path": "compiled/resources/sources/order_events/mv__order_events.sql"
+            }
+          ],
+          "retention": null,
+          "ttl": null
+        }
+      },
+      "tests": {}
+    },
+    "sqltide_dag.json": {
+      "edges": [
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:order_events",
+          "to_id": "model:orders"
+        }
+      ],
+      "macros": [],
+      "metadata": {
+        "dag_version": 1,
+        "tool": "sqltide"
+      },
+      "nodes": [
+        {
+          "id": "source:order_events",
+          "name": "order_events",
+          "type": "source"
+        },
+        {
+          "id": "model:orders",
+          "name": "orders",
+          "type": "model"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "audits": [],
+    "macros": [],
+    "models": [
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "order_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__orders",
+        "name": "orders",
+        "pipeline": "pl__order_events",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "order_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__orders",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_id\", \"_replay_landed_at\"],\n);\n\nSELECT\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __ref(\"order_events\")\n",
+          "compiled": "SELECT\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM raw__order_events",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__orders\nTO analytics.tbl__orders AS\nSELECT\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM analytics.raw__order_events",
+            "table": "CREATE TABLE analytics.tbl__orders (\n    order_id String,\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id, _replay_landed_at)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id",
+            "_replay_landed_at"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      }
+    ],
+    "pipelines": [
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "landed_at",
+        "directory": "pipelines/pl__order_events",
+        "mode": "virtual",
+        "models": [
+          "orders"
+        ],
+        "name": "pl__order_events",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "order_events"
+      }
+    ],
+    "project": {
+      "adapter": "clickhouse",
+      "auditScheduler": {
+        "enabled": false
+      },
+      "connection": {},
+      "database": "analytics",
+      "defaults": {
+        "audits": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "freshness": null,
+        "kafkaBrokerList": null,
+        "managedSourceTtl": null,
+        "modelTtl": null,
+        "models": {
+          "retention": null
+        },
+        "sources": {
+          "kafka": {
+            "retention": null
+          }
+        }
+      },
+      "dependencies": {
+        "allowedCrossPipelineReferences": [],
+        "modelReferenceScope": "project"
+      },
+      "name": "e2e_kafka_landed_at_project",
+      "naming": {
+        "tablePrefix": "tbl__",
+        "viewPrefix": "view__"
+      },
+      "target": "test",
+      "ui": {
+        "timezone": "UTC"
+      },
+      "vars": {}
+    },
+    "sources": [
+      {
+        "boundaryMode": "landed_at",
+        "columnMapping": null,
+        "freshness": null,
+        "kafka": {
+          "brokerList": "kafka:9092",
+          "consumerGroup": "streambuild_e2e_kafka_landed_at_project_test_order_events_analytics",
+          "format": "JSONAsString",
+          "settings": null,
+          "topic": "source.order_events.created"
+        },
+        "kind": "kafka",
+        "managedRelations": [
+          {
+            "ddl": "CREATE TABLE analytics.kafka__order_events (\n    message String\n) ENGINE = Kafka\nSETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.order_events.created', kafka_group_name = 'streambuild_e2e_kafka_landed_at_project_test_order_events_analytics', kafka_format = 'JSONAsString'",
+            "kind": "kafka_engine",
+            "name": "kafka__order_events"
+          },
+          {
+            "ddl": "CREATE TABLE analytics.raw__order_events (\n    kafka_key String,\n    kafka_value String,\n    kafka_topic String,\n    kafka_partition Int32,\n    kafka_offset Int64,\n    kafka_timestamp Nullable(DateTime64(3)),\n    _replay_partition Int32,\n    _replay_offset Int64,\n    _replay_timestamp Nullable(DateTime64(3)),\n    kafka_header_keys Array(String),\n    kafka_header_values Array(String),\n    kafka_landed_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (_replay_partition, _replay_offset)",
+            "kind": "landing_table",
+            "name": "raw__order_events"
+          },
+          {
+            "ddl": "CREATE MATERIALIZED VIEW analytics.mv__order_events\nTO analytics.raw__order_events AS\nSELECT\n  _key AS kafka_key,\n  message AS kafka_value,\n  _topic AS kafka_topic,\n  _partition AS kafka_partition,\n  _offset AS kafka_offset,\n  _timestamp_ms AS kafka_timestamp,\n  _partition AS _replay_partition,\n  _offset AS _replay_offset,\n  _timestamp_ms AS _replay_timestamp,\n  _headers.name AS kafka_header_keys,\n  _headers.value AS kafka_header_values,\n  now64(3) AS kafka_landed_at,\n  now64(3) AS _replay_landed_at\nFROM analytics.kafka__order_events",
+            "kind": "landing_mv",
+            "name": "mv__order_events"
+          }
+        ],
+        "name": "order_events",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "raw__order_events",
+        "retention": null,
+        "ttl": null
+      }
+    ],
+    "tests": [],
+    "versionKey": "golden"
+  },
+  "exit_code": 0,
+  "project": "e2e_kafka_landed_at_project",
+  "stderr": [],
+  "stdout": [
+    "Wrote compile artifacts to <project>/target",
+    "Pipelines: 1",
+    "Models: 1"
+  ]
+}

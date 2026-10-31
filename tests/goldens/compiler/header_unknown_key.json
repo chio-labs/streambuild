@@ -1,0 +1,13 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "header_unknown_key",
+  "stderr": [
+    "error [SQT-DISCOVERY-001] MODEL(...) in '<project>/pipelines/pl__orders/orders_enriched.sql' contains unsupported keys: materialized",
+    "phase: discovery",
+    "resource: orders_enriched",
+    "--> <project>/pipelines/pl__orders/orders_enriched.sql:1:1"
+  ],
+  "stdout": []
+}

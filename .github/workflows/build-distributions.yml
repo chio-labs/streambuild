@@ -1,0 +1,139 @@
+name: Build Distributions
+
+# The single owner of the wheel platform matrix and the distribution smoke tests. Verify builds
+# the distributions for pull requests that touch packaging, and Publish builds them from the tag.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit, tag or branch to build; empty builds the triggering commit"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: Build packaged UI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build UI assets
+        run: make ui-install ui-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packaged-ui
+          path: src/sqltide/dev_server/static/
+          if-no-files-found: error
+          retention-days: 1
+
+  wheels:
+    name: Build wheel (${{ matrix.platform.name }})
+    needs: ui
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+            target: x86_64
+          - name: linux-aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64
+          - name: macos-x86_64
+            runner: macos-15
+            target: x86_64
+            python-architecture: x64
+            smoke-arch: x86_64
+          - name: macos-arm64
+            runner: macos-15
+            target: aarch64
+          - name: windows-x86_64
+            runner: windows-2025
+            target: x86_64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: packaged-ui
+          path: src/sqltide/dev_server/static/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.platform.python-architecture }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --out dist --features extension-module
+          target: ${{ matrix.platform.target }}
+          manylinux: auto
+      - name: Smoke test the installed wheel
+        shell: bash
+        env:
+          SMOKE_ARCH: ${{ matrix.platform.smoke-arch }}
+        run: |
+          python -m venv "${RUNNER_TEMP}/wheel-smoke"
+          if [[ -x "${RUNNER_TEMP}/wheel-smoke/Scripts/python.exe" ]]; then
+            smoke_python="${RUNNER_TEMP}/wheel-smoke/Scripts/python.exe"
+          else
+            smoke_python="${RUNNER_TEMP}/wheel-smoke/bin/python"
+          fi
+          # A cross-compiled wheel runs under Rosetta; the cached Python is universal, so force
+          # the wheel's architecture or it starts as arm64 and rejects the wheel.
+          run_as=()
+          if [[ -n "${SMOKE_ARCH}" ]]; then
+            run_as=(arch "-${SMOKE_ARCH}")
+          fi
+          "${run_as[@]}" "${smoke_python}" -m pip install dist/*.whl
+          cd "${RUNNER_TEMP}"
+          "${run_as[@]}" "${smoke_python}" -c \
+            "import sqltide._native as native; assert native.parse_model_header('a 1') == {'a': 1}"
+          "${run_as[@]}" "$(dirname "${smoke_python}")/sqt" --help
+      - name: Check packaged UI assets
+        shell: bash
+        run: python -m scripts.verify_wheel_assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-wheel-${{ matrix.platform.name }}
+          path: dist
+          if-no-files-found: error
+
+  sdist:
+    name: Build sdist
+    needs: ui
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: packaged-ui
+          path: src/sqltide/dev_server/static/
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+      - name: Require the packaged UI in the source distribution
+        run: tar -tzf dist/*.tar.gz | grep -q 'sqltide/dev_server/static/index.html'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: dist
+          if-no-files-found: error

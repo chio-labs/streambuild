@@ -1,0 +1,8 @@
+name = "header_brace_mapping"
+default_target = "test"
+
+[defaults]
+pipeline_mode = "virtual"
+
+[targets.test]
+database = "analytics"

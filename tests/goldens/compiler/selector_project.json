@@ -1,0 +1,802 @@
+{
+  "artifacts": {
+    "compiled/models/pl__orders/orders_clean.sql": [
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM raw__orders"
+    ],
+    "compiled/models/pl__orders/orders_enriched.sql": [
+      "SELECT",
+      "  CAST(order_id AS String) AS order_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM tbl__orders_clean"
+    ],
+    "compiled/models/pl__payments/payments_enriched.sql": [
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'payment_id') AS String) AS payment_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM raw__payments"
+    ],
+    "compiled/resources/models/pl__orders/orders_clean.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders_clean",
+      "TO analytics.tbl__orders_clean AS",
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM analytics.raw__orders"
+    ],
+    "compiled/resources/models/pl__orders/orders_clean.table.sql": [
+      "CREATE TABLE analytics.tbl__orders_clean (",
+      "    order_id String,",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id, _replay_landed_at)"
+    ],
+    "compiled/resources/models/pl__orders/orders_enriched.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders_enriched",
+      "TO analytics.tbl__orders_enriched AS",
+      "SELECT",
+      "  CAST(order_id AS String) AS order_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM analytics.tbl__orders_clean"
+    ],
+    "compiled/resources/models/pl__orders/orders_enriched.table.sql": [
+      "CREATE TABLE analytics.tbl__orders_enriched (",
+      "    order_id String,",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id, _replay_landed_at)"
+    ],
+    "compiled/resources/models/pl__payments/payments_enriched.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__payments_enriched",
+      "TO analytics.tbl__payments_enriched AS",
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'payment_id') AS String) AS payment_id,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM analytics.raw__payments"
+    ],
+    "compiled/resources/models/pl__payments/payments_enriched.table.sql": [
+      "CREATE TABLE analytics.tbl__payments_enriched (",
+      "    payment_id String,",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (payment_id, _replay_landed_at)"
+    ],
+    "compiled/resources/sources/orders/kafka__orders.sql": [
+      "CREATE TABLE analytics.kafka__orders (",
+      "    message String",
+      ") ENGINE = Kafka",
+      "SETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.orders.created', kafka_group_name = 'streambuild_selector_project_test_orders_analytics', kafka_format = 'JSONAsString'"
+    ],
+    "compiled/resources/sources/orders/mv__orders.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders",
+      "TO analytics.raw__orders AS",
+      "SELECT",
+      "  _key AS kafka_key,",
+      "  message AS kafka_value,",
+      "  _topic AS kafka_topic,",
+      "  _partition AS kafka_partition,",
+      "  _offset AS kafka_offset,",
+      "  _timestamp_ms AS kafka_timestamp,",
+      "  _partition AS _replay_partition,",
+      "  _offset AS _replay_offset,",
+      "  _timestamp_ms AS _replay_timestamp,",
+      "  _headers.name AS kafka_header_keys,",
+      "  _headers.value AS kafka_header_values,",
+      "  now64(3) AS kafka_landed_at,",
+      "  now64(3) AS _replay_landed_at",
+      "FROM analytics.kafka__orders"
+    ],
+    "compiled/resources/sources/orders/raw__orders.sql": [
+      "CREATE TABLE analytics.raw__orders (",
+      "    kafka_key String,",
+      "    kafka_value String,",
+      "    kafka_topic String,",
+      "    kafka_partition Int32,",
+      "    kafka_offset Int64,",
+      "    kafka_timestamp Nullable(DateTime64(3)),",
+      "    _replay_partition Int32,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp Nullable(DateTime64(3)),",
+      "    kafka_header_keys Array(String),",
+      "    kafka_header_values Array(String),",
+      "    kafka_landed_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (_replay_partition, _replay_offset)"
+    ],
+    "compiled/resources/sources/payments/kafka__payments.sql": [
+      "CREATE TABLE analytics.kafka__payments (",
+      "    message String",
+      ") ENGINE = Kafka",
+      "SETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.payments.created', kafka_group_name = 'streambuild_selector_project_test_payments_analytics', kafka_format = 'JSONAsString'"
+    ],
+    "compiled/resources/sources/payments/mv__payments.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__payments",
+      "TO analytics.raw__payments AS",
+      "SELECT",
+      "  _key AS kafka_key,",
+      "  message AS kafka_value,",
+      "  _topic AS kafka_topic,",
+      "  _partition AS kafka_partition,",
+      "  _offset AS kafka_offset,",
+      "  _timestamp_ms AS kafka_timestamp,",
+      "  _partition AS _replay_partition,",
+      "  _offset AS _replay_offset,",
+      "  _timestamp_ms AS _replay_timestamp,",
+      "  _headers.name AS kafka_header_keys,",
+      "  _headers.value AS kafka_header_values,",
+      "  now64(3) AS kafka_landed_at,",
+      "  now64(3) AS _replay_landed_at",
+      "FROM analytics.kafka__payments"
+    ],
+    "compiled/resources/sources/payments/raw__payments.sql": [
+      "CREATE TABLE analytics.raw__payments (",
+      "    kafka_key String,",
+      "    kafka_value String,",
+      "    kafka_topic String,",
+      "    kafka_partition Int32,",
+      "    kafka_offset Int64,",
+      "    kafka_timestamp Nullable(DateTime64(3)),",
+      "    _replay_partition Int32,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp Nullable(DateTime64(3)),",
+      "    kafka_header_keys Array(String),",
+      "    kafka_header_values Array(String),",
+      "    kafka_landed_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (_replay_partition, _replay_offset)"
+    ],
+    "manifest.json": {
+      "artifacts": [
+        "manifest.json",
+        "sqltide_dag.json",
+        "compiled/models/pl__orders/orders_clean.sql",
+        "compiled/models/pl__orders/orders_enriched.sql",
+        "compiled/models/pl__payments/payments_enriched.sql",
+        "compiled/resources/models/pl__orders/orders_clean.mv.sql",
+        "compiled/resources/models/pl__orders/orders_clean.table.sql",
+        "compiled/resources/models/pl__orders/orders_enriched.mv.sql",
+        "compiled/resources/models/pl__orders/orders_enriched.table.sql",
+        "compiled/resources/models/pl__payments/payments_enriched.mv.sql",
+        "compiled/resources/models/pl__payments/payments_enriched.table.sql",
+        "compiled/resources/sources/orders/kafka__orders.sql",
+        "compiled/resources/sources/orders/mv__orders.sql",
+        "compiled/resources/sources/orders/raw__orders.sql",
+        "compiled/resources/sources/payments/kafka__payments.sql",
+        "compiled/resources/sources/payments/mv__payments.sql",
+        "compiled/resources/sources/payments/raw__payments.sql"
+      ],
+      "audits": {},
+      "dependencies": {
+        "allowed_cross_pipeline_references": [],
+        "model_reference_scope": "project"
+      },
+      "macros": {},
+      "metadata": {
+        "manifest_version": 1,
+        "tool": "sqltide"
+      },
+      "models": {
+        "orders_clean": {
+          "logical_key": "model:orders_clean",
+          "name": "orders_clean",
+          "pipeline": "pl__orders",
+          "query_path": "compiled/models/pl__orders/orders_clean.sql",
+          "refs": [
+            "orders"
+          ],
+          "relation_name": "tbl__orders_clean",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__orders_clean",
+              "path": "compiled/resources/models/pl__orders/orders_clean.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders_clean",
+              "path": "compiled/resources/models/pl__orders/orders_clean.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "orders",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id",
+              "_replay_landed_at"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        },
+        "orders_enriched": {
+          "logical_key": "model:orders_enriched",
+          "name": "orders_enriched",
+          "pipeline": "pl__orders",
+          "query_path": "compiled/models/pl__orders/orders_enriched.sql",
+          "refs": [
+            "orders_clean"
+          ],
+          "relation_name": "tbl__orders_enriched",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__orders_enriched",
+              "path": "compiled/resources/models/pl__orders/orders_enriched.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders_enriched",
+              "path": "compiled/resources/models/pl__orders/orders_enriched.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "orders_clean",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id",
+              "_replay_landed_at"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        },
+        "payments_enriched": {
+          "logical_key": "model:payments_enriched",
+          "name": "payments_enriched",
+          "pipeline": "pl__payments",
+          "query_path": "compiled/models/pl__payments/payments_enriched.sql",
+          "refs": [
+            "payments"
+          ],
+          "relation_name": "tbl__payments_enriched",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__payments_enriched",
+              "path": "compiled/resources/models/pl__payments/payments_enriched.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__payments_enriched",
+              "path": "compiled/resources/models/pl__payments/payments_enriched.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "payments",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "payment_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "payment_id",
+              "_replay_landed_at"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        }
+      },
+      "pipelines": {
+        "pl__orders": {
+          "file": "pipelines/pl__orders",
+          "models": [
+            "orders_clean",
+            "orders_enriched"
+          ],
+          "name": "pl__orders",
+          "relations": {
+            "orders": "raw__orders",
+            "orders_clean": "tbl__orders_clean",
+            "orders_enriched": "tbl__orders_enriched"
+          },
+          "replay_lineage_mode": "offsets",
+          "resolved_database": "analytics",
+          "source_name": "orders"
+        },
+        "pl__payments": {
+          "file": "pipelines/pl__payments",
+          "models": [
+            "payments_enriched"
+          ],
+          "name": "pl__payments",
+          "relations": {
+            "payments": "raw__payments",
+            "payments_enriched": "tbl__payments_enriched"
+          },
+          "replay_lineage_mode": "offsets",
+          "resolved_database": "analytics",
+          "source_name": "payments"
+        }
+      },
+      "sources": {
+        "orders": {
+          "logical_key": "source:orders",
+          "name": "orders",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "raw__orders",
+          "replay_lineage_mode": "offsets",
+          "resources": [
+            {
+              "kind": "managed_source",
+              "name": "kafka__orders",
+              "path": "compiled/resources/sources/orders/kafka__orders.sql"
+            },
+            {
+              "kind": "table",
+              "name": "raw__orders",
+              "path": "compiled/resources/sources/orders/raw__orders.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders",
+              "path": "compiled/resources/sources/orders/mv__orders.sql"
+            }
+          ],
+          "retention": null,
+          "ttl": null
+        },
+        "payments": {
+          "logical_key": "source:payments",
+          "name": "payments",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "raw__payments",
+          "replay_lineage_mode": "offsets",
+          "resources": [
+            {
+              "kind": "managed_source",
+              "name": "kafka__payments",
+              "path": "compiled/resources/sources/payments/kafka__payments.sql"
+            },
+            {
+              "kind": "table",
+              "name": "raw__payments",
+              "path": "compiled/resources/sources/payments/raw__payments.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__payments",
+              "path": "compiled/resources/sources/payments/mv__payments.sql"
+            }
+          ],
+          "retention": null,
+          "ttl": null
+        }
+      },
+      "tests": {}
+    },
+    "sqltide_dag.json": {
+      "edges": [
+        {
+          "edge_type": "driving_input",
+          "from_id": "model:orders_clean",
+          "to_id": "model:orders_enriched"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:orders",
+          "to_id": "model:orders_clean"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:payments",
+          "to_id": "model:payments_enriched"
+        }
+      ],
+      "macros": [],
+      "metadata": {
+        "dag_version": 1,
+        "tool": "sqltide"
+      },
+      "nodes": [
+        {
+          "id": "source:orders",
+          "name": "orders",
+          "type": "source"
+        },
+        {
+          "id": "source:payments",
+          "name": "payments",
+          "type": "source"
+        },
+        {
+          "id": "model:orders_clean",
+          "name": "orders_clean",
+          "type": "model"
+        },
+        {
+          "id": "model:orders_enriched",
+          "name": "orders_enriched",
+          "type": "model"
+        },
+        {
+          "id": "model:payments_enriched",
+          "name": "payments_enriched",
+          "type": "model"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "audits": [],
+    "macros": [],
+    "models": [
+      {
+        "anchor": "lineage_loss",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "orders",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__orders_clean",
+        "name": "orders_clean",
+        "pipeline": "pl__orders",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "orders",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__orders_clean",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_id\", \"_replay_landed_at\"],\n);\n\nSELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM __ref(\"orders\")\n",
+          "compiled": "SELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM raw__orders",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__orders_clean\nTO analytics.tbl__orders_clean AS\nSELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM analytics.raw__orders",
+            "table": "CREATE TABLE analytics.tbl__orders_clean (\n    order_id String,\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id, _replay_landed_at)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id",
+            "_replay_landed_at"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      },
+      {
+        "anchor": "lineage_loss",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "orders_clean",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__orders_enriched",
+        "name": "orders_enriched",
+        "pipeline": "pl__orders",
+        "refs": [
+          {
+            "isSource": false,
+            "name": "orders_clean",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__orders_enriched",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_id\", \"_replay_landed_at\"],\n);\n\nSELECT\n  CAST(order_id AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM __ref(\"orders_clean\")\n",
+          "compiled": "SELECT\n  CAST(order_id AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM tbl__orders_clean",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__orders_enriched\nTO analytics.tbl__orders_enriched AS\nSELECT\n  CAST(order_id AS String) AS order_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM analytics.tbl__orders_clean",
+            "table": "CREATE TABLE analytics.tbl__orders_enriched (\n    order_id String,\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id, _replay_landed_at)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id",
+            "_replay_landed_at"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      },
+      {
+        "anchor": "lineage_loss",
+        "columns": [
+          {
+            "description": null,
+            "name": "payment_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "payments",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__payments_enriched",
+        "name": "payments_enriched",
+        "pipeline": "pl__payments",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "payments",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__payments_enriched",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"payment_id\", \"_replay_landed_at\"],\n);\n\nSELECT\n  CAST(JSONExtractString(kafka_value, 'payment_id') AS String) AS payment_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM __ref(\"payments\")\n",
+          "compiled": "SELECT\n  CAST(JSONExtractString(kafka_value, 'payment_id') AS String) AS payment_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM raw__payments",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__payments_enriched\nTO analytics.tbl__payments_enriched AS\nSELECT\n  CAST(JSONExtractString(kafka_value, 'payment_id') AS String) AS payment_id,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM analytics.raw__payments",
+            "table": "CREATE TABLE analytics.tbl__payments_enriched (\n    payment_id String,\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (payment_id, _replay_landed_at)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "payment_id",
+            "_replay_landed_at"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      }
+    ],
+    "pipelines": [
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "offsets",
+        "directory": "pipelines/pl__orders",
+        "mode": "virtual",
+        "models": [
+          "orders_clean",
+          "orders_enriched"
+        ],
+        "name": "pl__orders",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "orders"
+      },
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "offsets",
+        "directory": "pipelines/pl__payments",
+        "mode": "virtual",
+        "models": [
+          "payments_enriched"
+        ],
+        "name": "pl__payments",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "payments"
+      }
+    ],
+    "project": {
+      "adapter": "clickhouse",
+      "auditScheduler": {
+        "enabled": false
+      },
+      "connection": {},
+      "database": "analytics",
+      "defaults": {
+        "audits": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "freshness": null,
+        "kafkaBrokerList": null,
+        "managedSourceTtl": null,
+        "modelTtl": null,
+        "models": {
+          "retention": null
+        },
+        "sources": {
+          "kafka": {
+            "retention": null
+          }
+        }
+      },
+      "dependencies": {
+        "allowedCrossPipelineReferences": [],
+        "modelReferenceScope": "project"
+      },
+      "name": "selector_project",
+      "naming": {
+        "tablePrefix": "tbl__",
+        "viewPrefix": "view__"
+      },
+      "target": "test",
+      "ui": {
+        "timezone": "UTC"
+      },
+      "vars": {}
+    },
+    "sources": [
+      {
+        "boundaryMode": "offsets",
+        "columnMapping": null,
+        "freshness": null,
+        "kafka": {
+          "brokerList": "kafka:9092",
+          "consumerGroup": "streambuild_selector_project_test_orders_analytics",
+          "format": "JSONAsString",
+          "settings": null,
+          "topic": "source.orders.created"
+        },
+        "kind": "kafka",
+        "managedRelations": [
+          {
+            "ddl": "CREATE TABLE analytics.kafka__orders (\n    message String\n) ENGINE = Kafka\nSETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.orders.created', kafka_group_name = 'streambuild_selector_project_test_orders_analytics', kafka_format = 'JSONAsString'",
+            "kind": "kafka_engine",
+            "name": "kafka__orders"
+          },
+          {
+            "ddl": "CREATE TABLE analytics.raw__orders (\n    kafka_key String,\n    kafka_value String,\n    kafka_topic String,\n    kafka_partition Int32,\n    kafka_offset Int64,\n    kafka_timestamp Nullable(DateTime64(3)),\n    _replay_partition Int32,\n    _replay_offset Int64,\n    _replay_timestamp Nullable(DateTime64(3)),\n    kafka_header_keys Array(String),\n    kafka_header_values Array(String),\n    kafka_landed_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (_replay_partition, _replay_offset)",
+            "kind": "landing_table",
+            "name": "raw__orders"
+          },
+          {
+            "ddl": "CREATE MATERIALIZED VIEW analytics.mv__orders\nTO analytics.raw__orders AS\nSELECT\n  _key AS kafka_key,\n  message AS kafka_value,\n  _topic AS kafka_topic,\n  _partition AS kafka_partition,\n  _offset AS kafka_offset,\n  _timestamp_ms AS kafka_timestamp,\n  _partition AS _replay_partition,\n  _offset AS _replay_offset,\n  _timestamp_ms AS _replay_timestamp,\n  _headers.name AS kafka_header_keys,\n  _headers.value AS kafka_header_values,\n  now64(3) AS kafka_landed_at,\n  now64(3) AS _replay_landed_at\nFROM analytics.kafka__orders",
+            "kind": "landing_mv",
+            "name": "mv__orders"
+          }
+        ],
+        "name": "orders",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "raw__orders",
+        "retention": null,
+        "ttl": null
+      },
+      {
+        "boundaryMode": "offsets",
+        "columnMapping": null,
+        "freshness": null,
+        "kafka": {
+          "brokerList": "kafka:9092",
+          "consumerGroup": "streambuild_selector_project_test_payments_analytics",
+          "format": "JSONAsString",
+          "settings": null,
+          "topic": "source.payments.created"
+        },
+        "kind": "kafka",
+        "managedRelations": [
+          {
+            "ddl": "CREATE TABLE analytics.kafka__payments (\n    message String\n) ENGINE = Kafka\nSETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.payments.created', kafka_group_name = 'streambuild_selector_project_test_payments_analytics', kafka_format = 'JSONAsString'",
+            "kind": "kafka_engine",
+            "name": "kafka__payments"
+          },
+          {
+            "ddl": "CREATE TABLE analytics.raw__payments (\n    kafka_key String,\n    kafka_value String,\n    kafka_topic String,\n    kafka_partition Int32,\n    kafka_offset Int64,\n    kafka_timestamp Nullable(DateTime64(3)),\n    _replay_partition Int32,\n    _replay_offset Int64,\n    _replay_timestamp Nullable(DateTime64(3)),\n    kafka_header_keys Array(String),\n    kafka_header_values Array(String),\n    kafka_landed_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (_replay_partition, _replay_offset)",
+            "kind": "landing_table",
+            "name": "raw__payments"
+          },
+          {
+            "ddl": "CREATE MATERIALIZED VIEW analytics.mv__payments\nTO analytics.raw__payments AS\nSELECT\n  _key AS kafka_key,\n  message AS kafka_value,\n  _topic AS kafka_topic,\n  _partition AS kafka_partition,\n  _offset AS kafka_offset,\n  _timestamp_ms AS kafka_timestamp,\n  _partition AS _replay_partition,\n  _offset AS _replay_offset,\n  _timestamp_ms AS _replay_timestamp,\n  _headers.name AS kafka_header_keys,\n  _headers.value AS kafka_header_values,\n  now64(3) AS kafka_landed_at,\n  now64(3) AS _replay_landed_at\nFROM analytics.kafka__payments",
+            "kind": "landing_mv",
+            "name": "mv__payments"
+          }
+        ],
+        "name": "payments",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "raw__payments",
+        "retention": null,
+        "ttl": null
+      }
+    ],
+    "tests": [],
+    "versionKey": "golden"
+  },
+  "exit_code": 0,
+  "project": "selector_project",
+  "stderr": [],
+  "stdout": [
+    "Wrote compile artifacts to <project>/target",
+    "Pipelines: 2",
+    "Models: 3"
+  ]
+}

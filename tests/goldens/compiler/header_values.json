@@ -1,0 +1,489 @@
+{
+  "artifacts": {
+    "compiled/models/pl__orders/orders_enriched.sql": [
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,",
+      "  CAST(JSONExtractString(kafka_value, 'customer_id') AS String) AS customer_id,",
+      "  CAST(",
+      "    toFloat64OrNull(JSONExtractString(kafka_value, 'order_total'))",
+      "    AS Nullable(Float64)",
+      "  ) AS order_total,",
+      "  CAST(",
+      "    parseDateTime64BestEffort(",
+      "      JSONExtractString(kafka_value, 'created_at'),",
+      "      3",
+      "    )",
+      "    AS DateTime64(3)",
+      "  ) AS created_at,",
+      "  CAST(",
+      "    parseDateTime64BestEffort(",
+      "      JSONExtractString(kafka_value, 'updated_at'),",
+      "      3",
+      "    )",
+      "    AS DateTime64(3)",
+      "  ) AS updated_at,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM raw__orders"
+    ],
+    "compiled/resources/models/pl__orders/orders_enriched.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders_enriched",
+      "TO analytics.tbl__orders_enriched AS",
+      "SELECT",
+      "  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,",
+      "  CAST(JSONExtractString(kafka_value, 'customer_id') AS String) AS customer_id,",
+      "  CAST(",
+      "    toFloat64OrNull(JSONExtractString(kafka_value, 'order_total'))",
+      "    AS Nullable(Float64)",
+      "  ) AS order_total,",
+      "  CAST(",
+      "    parseDateTime64BestEffort(",
+      "      JSONExtractString(kafka_value, 'created_at'),",
+      "      3",
+      "    )",
+      "    AS DateTime64(3)",
+      "  ) AS created_at,",
+      "  CAST(",
+      "    parseDateTime64BestEffort(",
+      "      JSONExtractString(kafka_value, 'updated_at'),",
+      "      3",
+      "    )",
+      "    AS DateTime64(3)",
+      "  ) AS updated_at,",
+      "  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at",
+      "FROM analytics.raw__orders"
+    ],
+    "compiled/resources/models/pl__orders/orders_enriched.table.sql": [
+      "CREATE TABLE analytics.tbl__orders_enriched (",
+      "    order_id String,",
+      "    customer_id String,",
+      "    order_total Nullable(Float64),",
+      "    created_at DateTime64(3),",
+      "    updated_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = ReplacingMergeTree(updated_at)",
+      "ORDER BY (order_id, updated_at)",
+      "PARTITION BY toYYYYMM(created_at)",
+      "TTL _replay_landed_at + INTERVAL 7 DAY",
+      "SETTINGS index_granularity = 8192, min_bytes_for_wide_part = 0"
+    ],
+    "compiled/resources/sources/orders/kafka__orders.sql": [
+      "CREATE TABLE analytics.kafka__orders (",
+      "    message String",
+      ") ENGINE = Kafka",
+      "SETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.orders.created', kafka_group_name = 'streambuild_header_values_test_orders_analytics', kafka_format = 'JSONAsString'"
+    ],
+    "compiled/resources/sources/orders/mv__orders.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__orders",
+      "TO analytics.raw__orders AS",
+      "SELECT",
+      "  _key AS kafka_key,",
+      "  message AS kafka_value,",
+      "  _topic AS kafka_topic,",
+      "  _partition AS kafka_partition,",
+      "  _offset AS kafka_offset,",
+      "  _timestamp_ms AS kafka_timestamp,",
+      "  _partition AS _replay_partition,",
+      "  _offset AS _replay_offset,",
+      "  _timestamp_ms AS _replay_timestamp,",
+      "  _headers.name AS kafka_header_keys,",
+      "  _headers.value AS kafka_header_values,",
+      "  now64(3) AS kafka_landed_at,",
+      "  now64(3) AS _replay_landed_at",
+      "FROM analytics.kafka__orders"
+    ],
+    "compiled/resources/sources/orders/raw__orders.sql": [
+      "CREATE TABLE analytics.raw__orders (",
+      "    kafka_key String,",
+      "    kafka_value String,",
+      "    kafka_topic String,",
+      "    kafka_partition Int32,",
+      "    kafka_offset Int64,",
+      "    kafka_timestamp Nullable(DateTime64(3)),",
+      "    _replay_partition Int32,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp Nullable(DateTime64(3)),",
+      "    kafka_header_keys Array(String),",
+      "    kafka_header_values Array(String),",
+      "    kafka_landed_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (_replay_partition, _replay_offset)"
+    ],
+    "manifest.json": {
+      "artifacts": [
+        "manifest.json",
+        "sqltide_dag.json",
+        "compiled/models/pl__orders/orders_enriched.sql",
+        "compiled/resources/models/pl__orders/orders_enriched.mv.sql",
+        "compiled/resources/models/pl__orders/orders_enriched.table.sql",
+        "compiled/resources/sources/orders/kafka__orders.sql",
+        "compiled/resources/sources/orders/mv__orders.sql",
+        "compiled/resources/sources/orders/raw__orders.sql"
+      ],
+      "audits": {},
+      "dependencies": {
+        "allowed_cross_pipeline_references": [],
+        "model_reference_scope": "project"
+      },
+      "macros": {},
+      "metadata": {
+        "manifest_version": 1,
+        "tool": "sqltide"
+      },
+      "models": {
+        "orders_enriched": {
+          "logical_key": "model:orders_enriched",
+          "name": "orders_enriched",
+          "pipeline": "pl__orders",
+          "query_path": "compiled/models/pl__orders/orders_enriched.sql",
+          "refs": [
+            "orders"
+          ],
+          "relation_name": "tbl__orders_enriched",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__orders_enriched",
+              "path": "compiled/resources/models/pl__orders/orders_enriched.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders_enriched",
+              "path": "compiled/resources/models/pl__orders/orders_enriched.mv.sql"
+            }
+          ],
+          "retention": {
+            "cap_at_column": null,
+            "duration_seconds": 604800,
+            "origin": "model",
+            "status": "applied",
+            "timestamp_column": "_replay_landed_at",
+            "when_missing": "skip"
+          },
+          "source": "orders",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "customer_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "order_total",
+                "type": "Nullable(Float64)"
+              },
+              {
+                "default": null,
+                "name": "created_at",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "updated_at",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "ReplacingMergeTree(updated_at)",
+            "order_by": [
+              "order_id",
+              "updated_at"
+            ],
+            "partition_by": "toYYYYMM(created_at)",
+            "settings": {
+              "index_granularity": "8192",
+              "min_bytes_for_wide_part": "0"
+            },
+            "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+          }
+        }
+      },
+      "pipelines": {
+        "pl__orders": {
+          "file": "pipelines/pl__orders",
+          "models": [
+            "orders_enriched"
+          ],
+          "name": "pl__orders",
+          "relations": {
+            "orders": "raw__orders",
+            "orders_enriched": "tbl__orders_enriched"
+          },
+          "replay_lineage_mode": "offsets",
+          "resolved_database": "analytics",
+          "source_name": "orders"
+        }
+      },
+      "sources": {
+        "orders": {
+          "logical_key": "source:orders",
+          "name": "orders",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "raw__orders",
+          "replay_lineage_mode": "offsets",
+          "resources": [
+            {
+              "kind": "managed_source",
+              "name": "kafka__orders",
+              "path": "compiled/resources/sources/orders/kafka__orders.sql"
+            },
+            {
+              "kind": "table",
+              "name": "raw__orders",
+              "path": "compiled/resources/sources/orders/raw__orders.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__orders",
+              "path": "compiled/resources/sources/orders/mv__orders.sql"
+            }
+          ],
+          "retention": null,
+          "ttl": null
+        }
+      },
+      "tests": {}
+    },
+    "sqltide_dag.json": {
+      "edges": [
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:orders",
+          "to_id": "model:orders_enriched"
+        }
+      ],
+      "macros": [],
+      "metadata": {
+        "dag_version": 1,
+        "tool": "sqltide"
+      },
+      "nodes": [
+        {
+          "id": "source:orders",
+          "name": "orders",
+          "type": "source"
+        },
+        {
+          "id": "model:orders_enriched",
+          "name": "orders_enriched",
+          "type": "model"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "audits": [],
+    "macros": [],
+    "models": [
+      {
+        "anchor": "lineage_loss",
+        "columns": [
+          {
+            "description": "Order identifier.",
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "customer_id",
+            "type": "String"
+          },
+          {
+            "description": "Total in major units",
+            "name": "order_total",
+            "type": "Nullable(Float64)"
+          },
+          {
+            "description": null,
+            "name": "created_at",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "updated_at",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": "Orders with \"escaped\" quotes and a \\ backslash",
+        "drivingInput": "orders",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__orders_enriched",
+        "name": "orders_enriched",
+        "pipeline": "pl__orders",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "orders",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__orders_enriched",
+        "retention": {
+          "capAtColumn": null,
+          "durationSeconds": 604800,
+          "origin": "model",
+          "status": "applied",
+          "timestampColumn": "_replay_landed_at",
+          "whenMissing": "skip"
+        },
+        "sql": {
+          "authored": "MODEL (\n  engine \"ReplacingMergeTree(updated_at)\",\n  order_by [\"order_id\", 'updated_at'],\n  partition_by \"toYYYYMM(created_at)\",\n  description \"Orders with \\\"escaped\\\" quotes and a \\\\ backslash\",\n  settings (index_granularity 8192, min_bytes_for_wide_part 0),\n  retention (duration \"7d\", timestamp_column _replay_landed_at, when_missing skip),\n  columns (\n    order_id (description 'Order identifier.'),\n    order_total (description \"Total in major units\",),\n  ),\n);\n\nSELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(JSONExtractString(kafka_value, 'customer_id') AS String) AS customer_id,\n  CAST(\n    toFloat64OrNull(JSONExtractString(kafka_value, 'order_total'))\n    AS Nullable(Float64)\n  ) AS order_total,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'created_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS created_at,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'updated_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS updated_at,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM __ref(\"orders\")\n",
+          "compiled": "SELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(JSONExtractString(kafka_value, 'customer_id') AS String) AS customer_id,\n  CAST(\n    toFloat64OrNull(JSONExtractString(kafka_value, 'order_total'))\n    AS Nullable(Float64)\n  ) AS order_total,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'created_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS created_at,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'updated_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS updated_at,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM raw__orders",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__orders_enriched\nTO analytics.tbl__orders_enriched AS\nSELECT\n  CAST(JSONExtractString(kafka_value, 'order_id') AS String) AS order_id,\n  CAST(JSONExtractString(kafka_value, 'customer_id') AS String) AS customer_id,\n  CAST(\n    toFloat64OrNull(JSONExtractString(kafka_value, 'order_total'))\n    AS Nullable(Float64)\n  ) AS order_total,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'created_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS created_at,\n  CAST(\n    parseDateTime64BestEffort(\n      JSONExtractString(kafka_value, 'updated_at'),\n      3\n    )\n    AS DateTime64(3)\n  ) AS updated_at,\n  CAST(_replay_landed_at AS DateTime64(3)) AS _replay_landed_at\nFROM analytics.raw__orders",
+            "table": "CREATE TABLE analytics.tbl__orders_enriched (\n    order_id String,\n    customer_id String,\n    order_total Nullable(Float64),\n    created_at DateTime64(3),\n    updated_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = ReplacingMergeTree(updated_at)\nORDER BY (order_id, updated_at)\nPARTITION BY toYYYYMM(created_at)\nTTL _replay_landed_at + INTERVAL 7 DAY\nSETTINGS index_granularity = 8192, min_bytes_for_wide_part = 0",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "ReplacingMergeTree(updated_at)",
+          "orderBy": [
+            "order_id",
+            "updated_at"
+          ],
+          "partitionBy": "toYYYYMM(created_at)",
+          "settings": {
+            "index_granularity": "8192",
+            "min_bytes_for_wide_part": "0"
+          },
+          "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+        }
+      }
+    ],
+    "pipelines": [
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "offsets",
+        "directory": "pipelines/pl__orders",
+        "mode": "virtual",
+        "models": [
+          "orders_enriched"
+        ],
+        "name": "pl__orders",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "orders"
+      }
+    ],
+    "project": {
+      "adapter": "clickhouse",
+      "auditScheduler": {
+        "enabled": false
+      },
+      "connection": {},
+      "database": "analytics",
+      "defaults": {
+        "audits": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "freshness": null,
+        "kafkaBrokerList": null,
+        "managedSourceTtl": null,
+        "modelTtl": null,
+        "models": {
+          "retention": null
+        },
+        "sources": {
+          "kafka": {
+            "retention": null
+          }
+        }
+      },
+      "dependencies": {
+        "allowedCrossPipelineReferences": [],
+        "modelReferenceScope": "project"
+      },
+      "name": "header_values",
+      "naming": {
+        "tablePrefix": "tbl__",
+        "viewPrefix": "view__"
+      },
+      "target": "test",
+      "ui": {
+        "timezone": "UTC"
+      },
+      "vars": {}
+    },
+    "sources": [
+      {
+        "boundaryMode": "offsets",
+        "columnMapping": null,
+        "freshness": null,
+        "kafka": {
+          "brokerList": "kafka:9092",
+          "consumerGroup": "streambuild_header_values_test_orders_analytics",
+          "format": "JSONAsString",
+          "settings": null,
+          "topic": "source.orders.created"
+        },
+        "kind": "kafka",
+        "managedRelations": [
+          {
+            "ddl": "CREATE TABLE analytics.kafka__orders (\n    message String\n) ENGINE = Kafka\nSETTINGS kafka_broker_list = 'kafka:9092', kafka_topic_list = 'source.orders.created', kafka_group_name = 'streambuild_header_values_test_orders_analytics', kafka_format = 'JSONAsString'",
+            "kind": "kafka_engine",
+            "name": "kafka__orders"
+          },
+          {
+            "ddl": "CREATE TABLE analytics.raw__orders (\n    kafka_key String,\n    kafka_value String,\n    kafka_topic String,\n    kafka_partition Int32,\n    kafka_offset Int64,\n    kafka_timestamp Nullable(DateTime64(3)),\n    _replay_partition Int32,\n    _replay_offset Int64,\n    _replay_timestamp Nullable(DateTime64(3)),\n    kafka_header_keys Array(String),\n    kafka_header_values Array(String),\n    kafka_landed_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (_replay_partition, _replay_offset)",
+            "kind": "landing_table",
+            "name": "raw__orders"
+          },
+          {
+            "ddl": "CREATE MATERIALIZED VIEW analytics.mv__orders\nTO analytics.raw__orders AS\nSELECT\n  _key AS kafka_key,\n  message AS kafka_value,\n  _topic AS kafka_topic,\n  _partition AS kafka_partition,\n  _offset AS kafka_offset,\n  _timestamp_ms AS kafka_timestamp,\n  _partition AS _replay_partition,\n  _offset AS _replay_offset,\n  _timestamp_ms AS _replay_timestamp,\n  _headers.name AS kafka_header_keys,\n  _headers.value AS kafka_header_values,\n  now64(3) AS kafka_landed_at,\n  now64(3) AS _replay_landed_at\nFROM analytics.kafka__orders",
+            "kind": "landing_mv",
+            "name": "mv__orders"
+          }
+        ],
+        "name": "orders",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "raw__orders",
+        "retention": null,
+        "ttl": null
+      }
+    ],
+    "tests": [],
+    "versionKey": "golden"
+  },
+  "exit_code": 0,
+  "project": "header_values",
+  "stderr": [],
+  "stdout": [
+    "Wrote compile artifacts to <project>/target",
+    "Pipelines: 1",
+    "Models: 1"
+  ]
+}

@@ -1,0 +1,704 @@
+{
+  "artifacts": {
+    "compiled/models/pl__idle_events/idle_orders.sql": [
+      "SELECT",
+      "  order_id::String AS order_id,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_idle_events)",
+      "WHERE 0"
+    ],
+    "compiled/models/pl__moving_events/moving_orders.sql": [
+      "SELECT",
+      "  order_id::String AS order_id,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_moving_events)"
+    ],
+    "compiled/models/pl__stalled_events/stalled_orders.sql": [
+      "SELECT",
+      "  CAST(order_id AS UInt64) AS order_number,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_stalled_events)"
+    ],
+    "compiled/resources/models/pl__idle_events/idle_orders.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__idle_orders",
+      "TO analytics.tbl__idle_orders AS",
+      "SELECT",
+      "  order_id::String AS order_id,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_idle_events)",
+      "WHERE 0"
+    ],
+    "compiled/resources/models/pl__idle_events/idle_orders.table.sql": [
+      "CREATE TABLE analytics.tbl__idle_orders (",
+      "    order_id String,",
+      "    _replay_timestamp DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id)"
+    ],
+    "compiled/resources/models/pl__moving_events/moving_orders.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__moving_orders",
+      "TO analytics.tbl__moving_orders AS",
+      "SELECT",
+      "  order_id::String AS order_id,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_moving_events)"
+    ],
+    "compiled/resources/models/pl__moving_events/moving_orders.table.sql": [
+      "CREATE TABLE analytics.tbl__moving_orders (",
+      "    order_id String,",
+      "    _replay_timestamp DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id)"
+    ],
+    "compiled/resources/models/pl__stalled_events/stalled_orders.mv.sql": [
+      "CREATE MATERIALIZED VIEW analytics.mv__stalled_orders",
+      "TO analytics.tbl__stalled_orders AS",
+      "SELECT",
+      "  CAST(order_id AS UInt64) AS order_number,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp",
+      "FROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_stalled_events)"
+    ],
+    "compiled/resources/models/pl__stalled_events/stalled_orders.table.sql": [
+      "CREATE TABLE analytics.tbl__stalled_orders (",
+      "    order_number UInt64,",
+      "    _replay_timestamp DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_number)"
+    ],
+    "manifest.json": {
+      "artifacts": [
+        "manifest.json",
+        "sqltide_dag.json",
+        "compiled/models/pl__idle_events/idle_orders.sql",
+        "compiled/models/pl__moving_events/moving_orders.sql",
+        "compiled/models/pl__stalled_events/stalled_orders.sql",
+        "compiled/resources/models/pl__idle_events/idle_orders.mv.sql",
+        "compiled/resources/models/pl__idle_events/idle_orders.table.sql",
+        "compiled/resources/models/pl__moving_events/moving_orders.mv.sql",
+        "compiled/resources/models/pl__moving_events/moving_orders.table.sql",
+        "compiled/resources/models/pl__stalled_events/stalled_orders.mv.sql",
+        "compiled/resources/models/pl__stalled_events/stalled_orders.table.sql"
+      ],
+      "audits": {},
+      "dependencies": {
+        "allowed_cross_pipeline_references": [],
+        "model_reference_scope": "project"
+      },
+      "macros": {},
+      "metadata": {
+        "manifest_version": 1,
+        "tool": "sqltide"
+      },
+      "models": {
+        "idle_orders": {
+          "logical_key": "model:idle_orders",
+          "name": "idle_orders",
+          "pipeline": "pl__idle_events",
+          "query_path": "compiled/models/pl__idle_events/idle_orders.sql",
+          "refs": [
+            "idle_events"
+          ],
+          "relation_name": "tbl__idle_orders",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__idle_orders",
+              "path": "compiled/resources/models/pl__idle_events/idle_orders.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__idle_orders",
+              "path": "compiled/resources/models/pl__idle_events/idle_orders.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "idle_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        },
+        "moving_orders": {
+          "logical_key": "model:moving_orders",
+          "name": "moving_orders",
+          "pipeline": "pl__moving_events",
+          "query_path": "compiled/models/pl__moving_events/moving_orders.sql",
+          "refs": [
+            "moving_events"
+          ],
+          "relation_name": "tbl__moving_orders",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__moving_orders",
+              "path": "compiled/resources/models/pl__moving_events/moving_orders.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__moving_orders",
+              "path": "compiled/resources/models/pl__moving_events/moving_orders.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "moving_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        },
+        "stalled_orders": {
+          "logical_key": "model:stalled_orders",
+          "name": "stalled_orders",
+          "pipeline": "pl__stalled_events",
+          "query_path": "compiled/models/pl__stalled_events/stalled_orders.sql",
+          "refs": [
+            "stalled_events"
+          ],
+          "relation_name": "tbl__stalled_orders",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__stalled_orders",
+              "path": "compiled/resources/models/pl__stalled_events/stalled_orders.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__stalled_orders",
+              "path": "compiled/resources/models/pl__stalled_events/stalled_orders.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "stalled_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "order_number",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_number"
+            ],
+            "partition_by": null,
+            "settings": null,
+            "ttl": null
+          }
+        }
+      },
+      "pipelines": {
+        "pl__idle_events": {
+          "file": "pipelines/pl__idle_events",
+          "models": [
+            "idle_orders"
+          ],
+          "name": "pl__idle_events",
+          "relations": {
+            "idle_events": "browser_idle_events",
+            "idle_orders": "tbl__idle_orders"
+          },
+          "replay_lineage_mode": "timestamp",
+          "resolved_database": "analytics",
+          "source_name": "idle_events"
+        },
+        "pl__moving_events": {
+          "file": "pipelines/pl__moving_events",
+          "models": [
+            "moving_orders"
+          ],
+          "name": "pl__moving_events",
+          "relations": {
+            "moving_events": "browser_moving_events",
+            "moving_orders": "tbl__moving_orders"
+          },
+          "replay_lineage_mode": "timestamp",
+          "resolved_database": "analytics",
+          "source_name": "moving_events"
+        },
+        "pl__stalled_events": {
+          "file": "pipelines/pl__stalled_events",
+          "models": [
+            "stalled_orders"
+          ],
+          "name": "pl__stalled_events",
+          "relations": {
+            "stalled_events": "browser_stalled_events",
+            "stalled_orders": "tbl__stalled_orders"
+          },
+          "replay_lineage_mode": "timestamp",
+          "resolved_database": "analytics",
+          "source_name": "stalled_events"
+        }
+      },
+      "sources": {
+        "idle_events": {
+          "logical_key": "source:idle_events",
+          "name": "idle_events",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "browser_idle_events",
+          "replay_lineage_mode": "timestamp",
+          "resources": [],
+          "retention": null,
+          "ttl": null
+        },
+        "moving_events": {
+          "logical_key": "source:moving_events",
+          "name": "moving_events",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "browser_moving_events",
+          "replay_lineage_mode": "timestamp",
+          "resources": [],
+          "retention": null,
+          "ttl": null
+        },
+        "stalled_events": {
+          "logical_key": "source:stalled_events",
+          "name": "stalled_events",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "browser_stalled_events",
+          "replay_lineage_mode": "timestamp",
+          "resources": [],
+          "retention": null,
+          "ttl": null
+        }
+      },
+      "tests": {}
+    },
+    "sqltide_dag.json": {
+      "edges": [
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:idle_events",
+          "to_id": "model:idle_orders"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:moving_events",
+          "to_id": "model:moving_orders"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:stalled_events",
+          "to_id": "model:stalled_orders"
+        }
+      ],
+      "macros": [],
+      "metadata": {
+        "dag_version": 1,
+        "tool": "sqltide"
+      },
+      "nodes": [
+        {
+          "id": "source:idle_events",
+          "name": "idle_events",
+          "type": "source"
+        },
+        {
+          "id": "source:moving_events",
+          "name": "moving_events",
+          "type": "source"
+        },
+        {
+          "id": "source:stalled_events",
+          "name": "stalled_events",
+          "type": "source"
+        },
+        {
+          "id": "model:idle_orders",
+          "name": "idle_orders",
+          "type": "model"
+        },
+        {
+          "id": "model:moving_orders",
+          "name": "moving_orders",
+          "type": "model"
+        },
+        {
+          "id": "model:stalled_orders",
+          "name": "stalled_orders",
+          "type": "model"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "audits": [],
+    "macros": [],
+    "models": [
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "idle_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__idle_orders",
+        "name": "idle_orders",
+        "pipeline": "pl__idle_events",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "idle_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__idle_orders",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_id\"]\n);\n\nSELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM __ref(\"idle_events\")\nWHERE 0\n",
+          "compiled": "SELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_idle_events)\nWHERE 0",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__idle_orders\nTO analytics.tbl__idle_orders AS\nSELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_idle_events)\nWHERE 0",
+            "table": "CREATE TABLE analytics.tbl__idle_orders (\n    order_id String,\n    _replay_timestamp DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      },
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "moving_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__moving_orders",
+        "name": "moving_orders",
+        "pipeline": "pl__moving_events",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "moving_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__moving_orders",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_id\"]\n);\n\nSELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM __ref(\"moving_events\")\n",
+          "compiled": "SELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_moving_events)",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__moving_orders\nTO analytics.tbl__moving_orders AS\nSELECT\n  order_id::String AS order_id,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_moving_events)",
+            "table": "CREATE TABLE analytics.tbl__moving_orders (\n    order_id String,\n    _replay_timestamp DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      },
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": null,
+            "name": "order_number",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": null,
+        "drivingInput": "stalled_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__stalled_orders",
+        "name": "stalled_orders",
+        "pipeline": "pl__stalled_events",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "stalled_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__stalled_orders",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  engine \"MergeTree()\",\n  order_by [\"order_number\"]\n);\n\nSELECT\n  CAST(order_id AS UInt64) AS order_number,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM __ref(\"stalled_events\")\n",
+          "compiled": "SELECT\n  CAST(order_id AS UInt64) AS order_number,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM browser_stalled_events)",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW analytics.mv__stalled_orders\nTO analytics.tbl__stalled_orders AS\nSELECT\n  CAST(order_id AS UInt64) AS order_number,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp\nFROM (SELECT *, event_timestamp AS _replay_timestamp FROM analytics.browser_stalled_events)",
+            "table": "CREATE TABLE analytics.tbl__stalled_orders (\n    order_number UInt64,\n    _replay_timestamp DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_number)",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_number"
+          ],
+          "partitionBy": null,
+          "settings": null,
+          "ttl": null
+        }
+      }
+    ],
+    "pipelines": [
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "timestamp",
+        "directory": "pipelines/pl__idle_events",
+        "mode": "direct",
+        "models": [
+          "idle_orders"
+        ],
+        "name": "pl__idle_events",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "idle_events"
+      },
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "timestamp",
+        "directory": "pipelines/pl__moving_events",
+        "mode": "direct",
+        "models": [
+          "moving_orders"
+        ],
+        "name": "pl__moving_events",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "moving_events"
+      },
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "timestamp",
+        "directory": "pipelines/pl__stalled_events",
+        "mode": "direct",
+        "models": [
+          "stalled_orders"
+        ],
+        "name": "pl__stalled_events",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "stalled_events"
+      }
+    ],
+    "project": {
+      "adapter": "clickhouse",
+      "auditScheduler": {
+        "enabled": false
+      },
+      "connection": {},
+      "database": "analytics",
+      "defaults": {
+        "audits": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "freshness": null,
+        "kafkaBrokerList": null,
+        "managedSourceTtl": null,
+        "modelTtl": null,
+        "models": {
+          "retention": null
+        },
+        "sources": {
+          "kafka": {
+            "retention": null
+          }
+        }
+      },
+      "dependencies": {
+        "allowedCrossPipelineReferences": [],
+        "modelReferenceScope": "project"
+      },
+      "name": "lineage_browser_project",
+      "naming": {
+        "tablePrefix": "tbl__",
+        "viewPrefix": "view__"
+      },
+      "target": "test",
+      "ui": {
+        "timezone": "UTC"
+      },
+      "vars": {}
+    },
+    "sources": [
+      {
+        "boundaryMode": "timestamp",
+        "columnMapping": {
+          "timestamp": "event_timestamp"
+        },
+        "freshness": null,
+        "kafka": null,
+        "kind": "stream_table",
+        "managedRelations": [],
+        "name": "idle_events",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "browser_idle_events",
+        "retention": null,
+        "ttl": null
+      },
+      {
+        "boundaryMode": "timestamp",
+        "columnMapping": {
+          "timestamp": "event_timestamp"
+        },
+        "freshness": null,
+        "kafka": null,
+        "kind": "stream_table",
+        "managedRelations": [],
+        "name": "moving_events",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "browser_moving_events",
+        "retention": null,
+        "ttl": null
+      },
+      {
+        "boundaryMode": "timestamp",
+        "columnMapping": {
+          "timestamp": "event_timestamp"
+        },
+        "freshness": null,
+        "kafka": null,
+        "kind": "stream_table",
+        "managedRelations": [],
+        "name": "stalled_events",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "browser_stalled_events",
+        "retention": null,
+        "ttl": null
+      }
+    ],
+    "tests": [],
+    "versionKey": "golden"
+  },
+  "exit_code": 0,
+  "project": "lineage_browser_project",
+  "stderr": [],
+  "stdout": [
+    "Wrote compile artifacts to <project>/target",
+    "Pipelines: 3",
+    "Models: 3"
+  ]
+}

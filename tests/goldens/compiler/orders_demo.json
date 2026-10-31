@@ -1,0 +1,2427 @@
+{
+  "artifacts": {
+    "compiled/audits/order_events/additive_fact_invariants.sql": [
+      "SELECT event_id, event_count, order_count, cancellation_count, refund_count, gross_revenue_cents",
+      "FROM __ref(\"order_event_facts\")",
+      "WHERE event_count != 1",
+      "   OR order_count + cancellation_count + refund_count > event_count",
+      "   OR (order_count = 0 AND gross_revenue_cents != 0)",
+      "   OR (order_count = 1 AND gross_revenue_cents = 0)"
+    ],
+    "compiled/audits/order_events/event_identity_consistency.sql": [
+      "SELECT event_id, count() AS physical_rows",
+      "FROM __ref(\"commerce_events\")",
+      "GROUP BY event_id",
+      "HAVING uniqExact(tuple(",
+      "  event_type,",
+      "  schema_version,",
+      "  order_id,",
+      "  customer_id,",
+      "  product,",
+      "  category,",
+      "  quantity,",
+      "  unit_price_cents,",
+      "  currency,",
+      "  status,",
+      "  region_code,",
+      "  event_at",
+      ")) > 1"
+    ],
+    "compiled/audits/order_events/no_future_events__orders_no_future_events.sql": [
+      "SELECT event_id, order_id, event_at",
+      "FROM __ref(\"order_events\")",
+      "WHERE event_at > now64(3) + INTERVAL 2 SECOND"
+    ],
+    "compiled/audits/pipelines/pl__order_events/commerce_events__commerce_events.event_type.accepted_values.1.sql": [
+      "SELECT event_type",
+      "FROM __ref(\"commerce_events\")",
+      "WHERE event_type NOT IN ('order_created', 'order_status_changed')"
+    ],
+    "compiled/audits/pipelines/pl__order_events/commerce_events__event and order ids are non-empty.sql": [
+      "SELECT *",
+      "FROM __ref(\"commerce_events\")",
+      "WHERE NOT (length(event_id) > 0 AND length(order_id) > 0)"
+    ],
+    "compiled/audits/pipelines/pl__order_events/order_events__order quantities and prices are positive.sql": [
+      "SELECT *",
+      "FROM __ref(\"order_events\")",
+      "WHERE NOT (quantity > 0 AND unit_price_cents > 0)"
+    ],
+    "compiled/audits/pipelines/pl__order_events/order_events__order_events.currency.accepted_values.1.sql": [
+      "SELECT currency",
+      "FROM __ref(\"order_events\")",
+      "WHERE currency NOT IN ('USD')"
+    ],
+    "compiled/audits/pipelines/pl__order_events/order_events__order_events.status.accepted_values.1.sql": [
+      "SELECT status",
+      "FROM __ref(\"order_events\")",
+      "WHERE status NOT IN ('created', 'paid', 'shipped', 'delivered', 'cancelled', 'refunded')"
+    ],
+    "compiled/models/pl__order_events/commerce_events.sql": [
+      "SELECT",
+      "  JSONExtractString(kafka_value, 'event_id')::String AS event_id,",
+      "  JSONExtractString(kafka_value, 'event_type')::String AS event_type,",
+      "  toUInt16(JSONExtractUInt(kafka_value, 'schema_version'))::UInt16 AS schema_version,",
+      "  JSONExtractString(kafka_value, 'order_id')::String AS order_id,",
+      "  JSONExtractString(kafka_value, 'customer_id')::String AS customer_id,",
+      "  JSONExtractString(kafka_value, 'product')::String AS product,",
+      "  JSONExtractString(kafka_value, 'category')::String AS category,",
+      "  toUInt32(JSONExtractUInt(kafka_value, 'quantity'))::UInt32 AS quantity,",
+      "  toUInt32(JSONExtractUInt(kafka_value, 'unit_price_cents'))::UInt32 AS unit_price_cents,",
+      "  JSONExtractString(kafka_value, 'currency')::String AS currency,",
+      "  JSONExtractString(kafka_value, 'status')::String AS status,",
+      "  JSONExtractString(kafka_value, 'region_code')::String AS region_code,",
+      "  parseDateTime64BestEffort(JSONExtractString(kafka_value, 'event_at'), 3)::DateTime64(3) AS event_at,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM raw__commerce_event_stream"
+    ],
+    "compiled/models/pl__order_events/commerce_kpis.sql": [
+      "SELECT",
+      "  event_day::Date AS event_day,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  category::String AS category,",
+      "  event_count::UInt64 AS event_count,",
+      "  order_count::UInt64 AS order_count,",
+      "  cancellation_count::UInt64 AS cancellation_count,",
+      "  refund_count::UInt64 AS refund_count,",
+      "  units_ordered::UInt64 AS units_ordered,",
+      "  gross_revenue_cents::UInt64 AS gross_revenue_cents,",
+      "  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,",
+      "  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,",
+      "  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,",
+      "  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate",
+      "FROM (",
+      "  SELECT",
+      "    event_day,",
+      "    currency,",
+      "    region_code,",
+      "    region_name,",
+      "    category,",
+      "    sum(event_count)::UInt64 AS event_count,",
+      "    sum(order_count)::UInt64 AS order_count,",
+      "    sum(cancellation_count)::UInt64 AS cancellation_count,",
+      "    sum(refund_count)::UInt64 AS refund_count,",
+      "    sum(units_ordered)::UInt64 AS units_ordered,",
+      "    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents",
+      "  FROM (",
+      "    SELECT",
+      "      event_id,",
+      "      argMax(event_day, _replay_offset) AS event_day,",
+      "      argMax(currency, _replay_offset) AS currency,",
+      "      argMax(region_code, _replay_offset) AS region_code,",
+      "      argMax(region_name, _replay_offset) AS region_name,",
+      "      argMax(category, _replay_offset) AS category,",
+      "      argMax(event_count, _replay_offset) AS event_count,",
+      "      argMax(order_count, _replay_offset) AS order_count,",
+      "      argMax(cancellation_count, _replay_offset) AS cancellation_count,",
+      "      argMax(refund_count, _replay_offset) AS refund_count,",
+      "      argMax(units_ordered, _replay_offset) AS units_ordered,",
+      "      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents",
+      "    FROM tbl__order_event_facts",
+      "    GROUP BY event_id",
+      "  )",
+      "  GROUP BY event_day, currency, region_code, region_name, category",
+      ")"
+    ],
+    "compiled/models/pl__order_events/order_event_facts.sql": [
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  order_id::String AS order_id,",
+      "  category::String AS category,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  toDate(event_at)::Date AS event_day,",
+      "  1::UInt64 AS event_count,",
+      "  toUInt64(status = 'created')::UInt64 AS order_count,",
+      "  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,",
+      "  toUInt64(status = 'refunded')::UInt64 AS refund_count,",
+      "  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,",
+      "  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM tbl__order_events"
+    ],
+    "compiled/models/pl__order_events/order_events.sql": [
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  event_type::String AS event_type,",
+      "  schema_version::UInt16 AS schema_version,",
+      "  order_id::String AS order_id,",
+      "  customer_id::String AS customer_id,",
+      "  product::String AS product,",
+      "  category::String AS category,",
+      "  quantity::UInt32 AS quantity,",
+      "  unit_price_cents::UInt32 AS unit_price_cents,",
+      "    currency::String AS currency,",
+      "    status::String AS status,",
+      "    region_code::String AS region_code,",
+      "    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM tbl__commerce_events"
+    ],
+    "compiled/resources/models/pl__order_events/commerce_events.mv.sql": [
+      "CREATE MATERIALIZED VIEW orders_demo.mv__commerce_events",
+      "TO orders_demo.tbl__commerce_events AS",
+      "SELECT",
+      "  JSONExtractString(kafka_value, 'event_id')::String AS event_id,",
+      "  JSONExtractString(kafka_value, 'event_type')::String AS event_type,",
+      "  toUInt16(JSONExtractUInt(kafka_value, 'schema_version'))::UInt16 AS schema_version,",
+      "  JSONExtractString(kafka_value, 'order_id')::String AS order_id,",
+      "  JSONExtractString(kafka_value, 'customer_id')::String AS customer_id,",
+      "  JSONExtractString(kafka_value, 'product')::String AS product,",
+      "  JSONExtractString(kafka_value, 'category')::String AS category,",
+      "  toUInt32(JSONExtractUInt(kafka_value, 'quantity'))::UInt32 AS quantity,",
+      "  toUInt32(JSONExtractUInt(kafka_value, 'unit_price_cents'))::UInt32 AS unit_price_cents,",
+      "  JSONExtractString(kafka_value, 'currency')::String AS currency,",
+      "  JSONExtractString(kafka_value, 'status')::String AS status,",
+      "  JSONExtractString(kafka_value, 'region_code')::String AS region_code,",
+      "  parseDateTime64BestEffort(JSONExtractString(kafka_value, 'event_at'), 3)::DateTime64(3) AS event_at,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM orders_demo.raw__commerce_event_stream"
+    ],
+    "compiled/resources/models/pl__order_events/commerce_events.table.sql": [
+      "CREATE TABLE orders_demo.tbl__commerce_events (",
+      "    event_id String,",
+      "    event_type String,",
+      "    schema_version UInt16,",
+      "    order_id String,",
+      "    customer_id String,",
+      "    product String,",
+      "    category String,",
+      "    quantity UInt32,",
+      "    unit_price_cents UInt32,",
+      "    currency String,",
+      "    status String,",
+      "    region_code String,",
+      "    event_at DateTime64(3),",
+      "    _replay_partition Int64,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (event_id, _replay_partition, _replay_offset)",
+      "PARTITION BY toYYYYMM(_replay_landed_at)",
+      "TTL _replay_landed_at + INTERVAL 7 DAY"
+    ],
+    "compiled/resources/models/pl__order_events/commerce_kpis.view.sql": [
+      "CREATE VIEW orders_demo.view__commerce_kpis AS",
+      "SELECT",
+      "  event_day::Date AS event_day,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  category::String AS category,",
+      "  event_count::UInt64 AS event_count,",
+      "  order_count::UInt64 AS order_count,",
+      "  cancellation_count::UInt64 AS cancellation_count,",
+      "  refund_count::UInt64 AS refund_count,",
+      "  units_ordered::UInt64 AS units_ordered,",
+      "  gross_revenue_cents::UInt64 AS gross_revenue_cents,",
+      "  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,",
+      "  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,",
+      "  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,",
+      "  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate",
+      "FROM (",
+      "  SELECT",
+      "    event_day,",
+      "    currency,",
+      "    region_code,",
+      "    region_name,",
+      "    category,",
+      "    sum(event_count)::UInt64 AS event_count,",
+      "    sum(order_count)::UInt64 AS order_count,",
+      "    sum(cancellation_count)::UInt64 AS cancellation_count,",
+      "    sum(refund_count)::UInt64 AS refund_count,",
+      "    sum(units_ordered)::UInt64 AS units_ordered,",
+      "    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents",
+      "  FROM (",
+      "    SELECT",
+      "      event_id,",
+      "      argMax(event_day, _replay_offset) AS event_day,",
+      "      argMax(currency, _replay_offset) AS currency,",
+      "      argMax(region_code, _replay_offset) AS region_code,",
+      "      argMax(region_name, _replay_offset) AS region_name,",
+      "      argMax(category, _replay_offset) AS category,",
+      "      argMax(event_count, _replay_offset) AS event_count,",
+      "      argMax(order_count, _replay_offset) AS order_count,",
+      "      argMax(cancellation_count, _replay_offset) AS cancellation_count,",
+      "      argMax(refund_count, _replay_offset) AS refund_count,",
+      "      argMax(units_ordered, _replay_offset) AS units_ordered,",
+      "      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents",
+      "    FROM orders_demo.tbl__order_event_facts",
+      "    GROUP BY event_id",
+      "  )",
+      "  GROUP BY event_day, currency, region_code, region_name, category",
+      ")"
+    ],
+    "compiled/resources/models/pl__order_events/order_event_facts.mv.sql": [
+      "CREATE MATERIALIZED VIEW orders_demo.mv__order_event_facts",
+      "TO orders_demo.tbl__order_event_facts AS",
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  order_id::String AS order_id,",
+      "  category::String AS category,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  toDate(event_at)::Date AS event_day,",
+      "  1::UInt64 AS event_count,",
+      "  toUInt64(status = 'created')::UInt64 AS order_count,",
+      "  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,",
+      "  toUInt64(status = 'refunded')::UInt64 AS refund_count,",
+      "  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,",
+      "  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM orders_demo.tbl__order_events"
+    ],
+    "compiled/resources/models/pl__order_events/order_event_facts.table.sql": [
+      "CREATE TABLE orders_demo.tbl__order_event_facts (",
+      "    event_id String,",
+      "    order_id String,",
+      "    category String,",
+      "    currency String,",
+      "    region_code String,",
+      "    region_name String,",
+      "    event_at DateTime64(3),",
+      "    event_day Date,",
+      "    event_count UInt64,",
+      "    order_count UInt64,",
+      "    cancellation_count UInt64,",
+      "    refund_count UInt64,",
+      "    units_ordered UInt64,",
+      "    gross_revenue_cents UInt64,",
+      "    _replay_partition Int64,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (event_id, _replay_partition, _replay_offset)",
+      "PARTITION BY toYYYYMM(_replay_landed_at)",
+      "TTL _replay_landed_at + INTERVAL 7 DAY"
+    ],
+    "compiled/resources/models/pl__order_events/order_events.mv.sql": [
+      "CREATE MATERIALIZED VIEW orders_demo.mv__order_events",
+      "TO orders_demo.tbl__order_events AS",
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  event_type::String AS event_type,",
+      "  schema_version::UInt16 AS schema_version,",
+      "  order_id::String AS order_id,",
+      "  customer_id::String AS customer_id,",
+      "  product::String AS product,",
+      "  category::String AS category,",
+      "  quantity::UInt32 AS quantity,",
+      "  unit_price_cents::UInt32 AS unit_price_cents,",
+      "    currency::String AS currency,",
+      "    status::String AS status,",
+      "    region_code::String AS region_code,",
+      "    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM orders_demo.tbl__commerce_events"
+    ],
+    "compiled/resources/models/pl__order_events/order_events.table.sql": [
+      "CREATE TABLE orders_demo.tbl__order_events (",
+      "    event_id String,",
+      "    event_type String,",
+      "    schema_version UInt16,",
+      "    order_id String,",
+      "    customer_id String,",
+      "    product String,",
+      "    category String,",
+      "    quantity UInt32,",
+      "    unit_price_cents UInt32,",
+      "    currency String,",
+      "    status String,",
+      "    region_code String,",
+      "    region_name String,",
+      "    event_at DateTime64(3),",
+      "    _replay_partition Int64,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (order_id, event_at, event_id, _replay_offset)",
+      "PARTITION BY toYYYYMM(_replay_landed_at)",
+      "TTL _replay_landed_at + INTERVAL 7 DAY"
+    ],
+    "compiled/resources/sources/commerce_event_stream/kafka__commerce_event_stream.sql": [
+      "CREATE TABLE orders_demo.kafka__commerce_event_stream (",
+      "    message String",
+      ") ENGINE = Kafka",
+      "SETTINGS kafka_broker_list = 'redpanda.localhost:19092', kafka_topic_list = 'source.order_events.live', kafka_group_name = 'streambuild_orders_demo_demo_commerce_event_stream_orders_demo', kafka_format = 'JSONAsString'"
+    ],
+    "compiled/resources/sources/commerce_event_stream/mv__commerce_event_stream.sql": [
+      "CREATE MATERIALIZED VIEW orders_demo.mv__commerce_event_stream",
+      "TO orders_demo.raw__commerce_event_stream AS",
+      "SELECT",
+      "  _key AS kafka_key,",
+      "  message AS kafka_value,",
+      "  _topic AS kafka_topic,",
+      "  _partition AS kafka_partition,",
+      "  _offset AS kafka_offset,",
+      "  _timestamp_ms AS kafka_timestamp,",
+      "  _partition AS _replay_partition,",
+      "  _offset AS _replay_offset,",
+      "  _timestamp_ms AS _replay_timestamp,",
+      "  _headers.name AS kafka_header_keys,",
+      "  _headers.value AS kafka_header_values,",
+      "  now64(3) AS kafka_landed_at,",
+      "  now64(3) AS _replay_landed_at",
+      "FROM orders_demo.kafka__commerce_event_stream"
+    ],
+    "compiled/resources/sources/commerce_event_stream/raw__commerce_event_stream.sql": [
+      "CREATE TABLE orders_demo.raw__commerce_event_stream (",
+      "    kafka_key String,",
+      "    kafka_value String,",
+      "    kafka_topic String,",
+      "    kafka_partition Int32,",
+      "    kafka_offset Int64,",
+      "    kafka_timestamp Nullable(DateTime64(3)),",
+      "    _replay_partition Int32,",
+      "    _replay_offset Int64,",
+      "    _replay_timestamp Nullable(DateTime64(3)),",
+      "    kafka_header_keys Array(String),",
+      "    kafka_header_values Array(String),",
+      "    kafka_landed_at DateTime64(3),",
+      "    _replay_landed_at DateTime64(3)",
+      ") ENGINE = MergeTree()",
+      "ORDER BY (_replay_partition, _replay_offset)",
+      "TTL _replay_landed_at + INTERVAL 7 DAY"
+    ],
+    "compiled/tests/commerce_kpis/terminal kpis deduplicate facts before deriving rates.sql": [
+      "(",
+      "WITH",
+      "__ref__order_event_facts AS (",
+      "SELECT",
+      "    'evt_created' AS event_id,",
+      "    toDate('2026-08-23') AS event_day,",
+      "    'USD' AS currency,",
+      "    'us-east' AS region_code,",
+      "    'US East' AS region_name,",
+      "    'electronics' AS category,",
+      "    1::UInt64 AS event_count,",
+      "    1::UInt64 AS order_count,",
+      "    0::UInt64 AS cancellation_count,",
+      "    0::UInt64 AS refund_count,",
+      "    2::UInt64 AS units_ordered,",
+      "    2500::UInt64 AS gross_revenue_cents,",
+      "    1::Int64 AS _replay_offset",
+      "  UNION ALL",
+      "  SELECT",
+      "    'evt_created', toDate('2026-08-23'), 'USD', 'us-east', 'US East', 'electronics',",
+      "    1::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 2::UInt64, 2500::UInt64, 2::Int64",
+      "  UNION ALL",
+      "  SELECT",
+      "    'evt_cancelled', toDate('2026-08-23'), 'USD', 'us-east', 'US East', 'electronics',",
+      "    1::UInt64, 0::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 0::UInt64, 3::Int64",
+      "),",
+      "__model__commerce_kpis AS (",
+      "SELECT",
+      "  event_day::Date AS event_day,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  category::String AS category,",
+      "  event_count::UInt64 AS event_count,",
+      "  order_count::UInt64 AS order_count,",
+      "  cancellation_count::UInt64 AS cancellation_count,",
+      "  refund_count::UInt64 AS refund_count,",
+      "  units_ordered::UInt64 AS units_ordered,",
+      "  gross_revenue_cents::UInt64 AS gross_revenue_cents,",
+      "  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,",
+      "  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,",
+      "  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,",
+      "  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate",
+      "FROM (",
+      "  SELECT",
+      "    event_day,",
+      "    currency,",
+      "    region_code,",
+      "    region_name,",
+      "    category,",
+      "    sum(event_count)::UInt64 AS event_count,",
+      "    sum(order_count)::UInt64 AS order_count,",
+      "    sum(cancellation_count)::UInt64 AS cancellation_count,",
+      "    sum(refund_count)::UInt64 AS refund_count,",
+      "    sum(units_ordered)::UInt64 AS units_ordered,",
+      "    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents",
+      "  FROM (",
+      "    SELECT",
+      "      event_id,",
+      "      argMax(event_day, _replay_offset) AS event_day,",
+      "      argMax(currency, _replay_offset) AS currency,",
+      "      argMax(region_code, _replay_offset) AS region_code,",
+      "      argMax(region_name, _replay_offset) AS region_name,",
+      "      argMax(category, _replay_offset) AS category,",
+      "      argMax(event_count, _replay_offset) AS event_count,",
+      "      argMax(order_count, _replay_offset) AS order_count,",
+      "      argMax(cancellation_count, _replay_offset) AS cancellation_count,",
+      "      argMax(refund_count, _replay_offset) AS refund_count,",
+      "      argMax(units_ordered, _replay_offset) AS units_ordered,",
+      "      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents",
+      "    FROM __ref__order_event_facts",
+      "    GROUP BY event_id",
+      "  )",
+      "  GROUP BY event_day, currency, region_code, region_name, category",
+      ")",
+      "),",
+      "__sqltide_expected_counts_0 AS (",
+      "SELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT",
+      "    CAST(event_day AS Date) AS event_day,",
+      "    CAST(event_count AS UInt64) AS event_count,",
+      "    CAST(order_count AS UInt64) AS order_count,",
+      "    CAST(cancellation_count AS UInt64) AS cancellation_count,",
+      "    CAST(units_ordered AS UInt64) AS units_ordered,",
+      "    CAST(gross_revenue_cents AS UInt64) AS gross_revenue_cents,",
+      "    CAST(gross_revenue AS Float64) AS gross_revenue,",
+      "    CAST(average_order_value AS Float64) AS average_order_value,",
+      "    CAST(cancellation_rate AS Float64) AS cancellation_rate",
+      "FROM (",
+      "SELECT",
+      "    toDate('2026-08-23') AS event_day,",
+      "    2::UInt64 AS event_count,",
+      "    1::UInt64 AS order_count,",
+      "    1::UInt64 AS cancellation_count,",
+      "    2::UInt64 AS units_ordered,",
+      "    2500::UInt64 AS gross_revenue_cents,",
+      "    25.0 AS gross_revenue,",
+      "    25.0 AS average_order_value,",
+      "    1.0 AS cancellation_rate",
+      ") AS expected_source",
+      ")",
+      "GROUP BY event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate",
+      "),",
+      "__sqltide_actual_counts_0 AS (",
+      "SELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate FROM __model__commerce_kpis",
+      ")",
+      "GROUP BY event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate",
+      ")",
+      "SELECT 0 AS _case_index, 'missing' AS _diff_type,",
+      "       [CAST(expected_rows.event_day AS Nullable(String)), CAST(expected_rows.event_count AS Nullable(String)), CAST(expected_rows.order_count AS Nullable(String)), CAST(expected_rows.cancellation_count AS Nullable(String)), CAST(expected_rows.units_ordered AS Nullable(String)), CAST(expected_rows.gross_revenue_cents AS Nullable(String)), CAST(expected_rows.gross_revenue AS Nullable(String)), CAST(expected_rows.average_order_value AS Nullable(String)), CAST(expected_rows.cancellation_rate AS Nullable(String))] AS _row_values,",
+      "       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_expected_counts_0 AS expected_rows",
+      "ALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows",
+      "ON isNotDistinctFrom(expected_rows.event_day, actual_rows.event_day) AND isNotDistinctFrom(expected_rows.event_count, actual_rows.event_count) AND isNotDistinctFrom(expected_rows.order_count, actual_rows.order_count) AND isNotDistinctFrom(expected_rows.cancellation_count, actual_rows.cancellation_count) AND isNotDistinctFrom(expected_rows.units_ordered, actual_rows.units_ordered) AND isNotDistinctFrom(expected_rows.gross_revenue_cents, actual_rows.gross_revenue_cents) AND isNotDistinctFrom(expected_rows.gross_revenue, actual_rows.gross_revenue) AND isNotDistinctFrom(expected_rows.average_order_value, actual_rows.average_order_value) AND isNotDistinctFrom(expected_rows.cancellation_rate, actual_rows.cancellation_rate)",
+      "WHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)",
+      "UNION ALL",
+      "SELECT 0 AS _case_index, 'unexpected' AS _diff_type,",
+      "       [CAST(actual_rows.event_day AS Nullable(String)), CAST(actual_rows.event_count AS Nullable(String)), CAST(actual_rows.order_count AS Nullable(String)), CAST(actual_rows.cancellation_count AS Nullable(String)), CAST(actual_rows.units_ordered AS Nullable(String)), CAST(actual_rows.gross_revenue_cents AS Nullable(String)), CAST(actual_rows.gross_revenue AS Nullable(String)), CAST(actual_rows.average_order_value AS Nullable(String)), CAST(actual_rows.cancellation_rate AS Nullable(String))] AS _row_values,",
+      "       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_actual_counts_0 AS actual_rows",
+      "ALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows",
+      "ON isNotDistinctFrom(actual_rows.event_day, expected_rows.event_day) AND isNotDistinctFrom(actual_rows.event_count, expected_rows.event_count) AND isNotDistinctFrom(actual_rows.order_count, expected_rows.order_count) AND isNotDistinctFrom(actual_rows.cancellation_count, expected_rows.cancellation_count) AND isNotDistinctFrom(actual_rows.units_ordered, expected_rows.units_ordered) AND isNotDistinctFrom(actual_rows.gross_revenue_cents, expected_rows.gross_revenue_cents) AND isNotDistinctFrom(actual_rows.gross_revenue, expected_rows.gross_revenue) AND isNotDistinctFrom(actual_rows.average_order_value, expected_rows.average_order_value) AND isNotDistinctFrom(actual_rows.cancellation_rate, expected_rows.cancellation_rate)",
+      "WHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)",
+      ")"
+    ],
+    "compiled/tests/macro commerce expressions preserve integer money and safe rates/commerce expressions preserve integer money and safe rates.sql": [
+      "(",
+      "WITH",
+      "__sqltide_expected_counts_0 AS (",
+      "SELECT line_revenue_cents, cancellation_rate, region_name, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT 3897::UInt64 AS line_revenue_cents, 0.0 AS cancellation_rate, 'Europe West' AS region_name",
+      ")",
+      "GROUP BY line_revenue_cents, cancellation_rate, region_name",
+      "),",
+      "__sqltide_actual_counts_0 AS (",
+      "SELECT line_revenue_cents, cancellation_rate, region_name, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT",
+      "    toUInt64(quantity) * toUInt64(unit_price_cents) AS line_revenue_cents,",
+      "    if(orders = 0, 0.0, toFloat64(cancelled) / toFloat64(orders)) AS cancellation_rate,",
+      "    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code) AS region_name",
+      "  FROM (",
+      "    SELECT",
+      "      3::UInt32 AS quantity,",
+      "      1299::UInt32 AS unit_price_cents,",
+      "      0 AS cancelled,",
+      "      0 AS orders,",
+      "      'eu-west' AS region_code",
+      "  )",
+      ")",
+      "GROUP BY line_revenue_cents, cancellation_rate, region_name",
+      ")",
+      "SELECT 0 AS _case_index, 'missing' AS _diff_type,",
+      "       [CAST(expected_rows.line_revenue_cents AS Nullable(String)), CAST(expected_rows.cancellation_rate AS Nullable(String)), CAST(expected_rows.region_name AS Nullable(String))] AS _row_values,",
+      "       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_expected_counts_0 AS expected_rows",
+      "ALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows",
+      "ON isNotDistinctFrom(expected_rows.line_revenue_cents, actual_rows.line_revenue_cents) AND isNotDistinctFrom(expected_rows.cancellation_rate, actual_rows.cancellation_rate) AND isNotDistinctFrom(expected_rows.region_name, actual_rows.region_name)",
+      "WHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)",
+      "UNION ALL",
+      "SELECT 0 AS _case_index, 'unexpected' AS _diff_type,",
+      "       [CAST(actual_rows.line_revenue_cents AS Nullable(String)), CAST(actual_rows.cancellation_rate AS Nullable(String)), CAST(actual_rows.region_name AS Nullable(String))] AS _row_values,",
+      "       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_actual_counts_0 AS actual_rows",
+      "ALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows",
+      "ON isNotDistinctFrom(actual_rows.line_revenue_cents, expected_rows.line_revenue_cents) AND isNotDistinctFrom(actual_rows.cancellation_rate, expected_rows.cancellation_rate) AND isNotDistinctFrom(actual_rows.region_name, expected_rows.region_name)",
+      "WHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)",
+      ")"
+    ],
+    "compiled/tests/order_event_facts/order facts emit additive values.sql": [
+      "(",
+      "WITH",
+      "__ref__order_events AS (",
+      "SELECT",
+      "    'evt_created' AS event_id,",
+      "    'ord_001' AS order_id,",
+      "    'electronics' AS category,",
+      "    'USD' AS currency,",
+      "    'us-east' AS region_code,",
+      "    'US East' AS region_name,",
+      "    'created' AS status,",
+      "    2::UInt32 AS quantity,",
+      "    1250::UInt32 AS unit_price_cents,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS event_at,",
+      "    0 AS _replay_partition,",
+      "    1 AS _replay_offset,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_timestamp,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_landed_at",
+      "  UNION ALL",
+      "  SELECT",
+      "    'evt_cancelled', 'ord_001', 'electronics', 'USD', 'us-east', 'US East',",
+      "    'cancelled', 2::UInt32, 1250::UInt32,",
+      "    toDateTime64('2026-08-23 10:05:00', 3), 0, 2,",
+      "    toDateTime64('2026-08-23 10:05:00', 3),",
+      "    toDateTime64('2026-08-23 10:05:00', 3)",
+      "),",
+      "__model__order_event_facts AS (",
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  order_id::String AS order_id,",
+      "  category::String AS category,",
+      "  currency::String AS currency,",
+      "  region_code::String AS region_code,",
+      "  region_name::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  toDate(event_at)::Date AS event_day,",
+      "  1::UInt64 AS event_count,",
+      "  toUInt64(status = 'created')::UInt64 AS order_count,",
+      "  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,",
+      "  toUInt64(status = 'refunded')::UInt64 AS refund_count,",
+      "  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,",
+      "  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM __ref__order_events",
+      "),",
+      "__sqltide_expected_counts_0 AS (",
+      "SELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT",
+      "    CAST(event_id AS String) AS event_id,",
+      "    CAST(event_count AS UInt64) AS event_count,",
+      "    CAST(order_count AS UInt64) AS order_count,",
+      "    CAST(cancellation_count AS UInt64) AS cancellation_count,",
+      "    CAST(refund_count AS UInt64) AS refund_count,",
+      "    CAST(units_ordered AS UInt64) AS units_ordered,",
+      "    CAST(gross_revenue_cents AS UInt64) AS gross_revenue_cents",
+      "FROM (",
+      "SELECT",
+      "    'evt_created' AS event_id,",
+      "    1::UInt64 AS event_count,",
+      "    1::UInt64 AS order_count,",
+      "    0::UInt64 AS cancellation_count,",
+      "    0::UInt64 AS refund_count,",
+      "    2::UInt64 AS units_ordered,",
+      "    2500::UInt64 AS gross_revenue_cents",
+      "  UNION ALL",
+      "  SELECT 'evt_cancelled', 1::UInt64, 0::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 0::UInt64",
+      ") AS expected_source",
+      ")",
+      "GROUP BY event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents",
+      "),",
+      "__sqltide_actual_counts_0 AS (",
+      "SELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents FROM __model__order_event_facts",
+      ")",
+      "GROUP BY event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents",
+      ")",
+      "SELECT 0 AS _case_index, 'missing' AS _diff_type,",
+      "       [CAST(expected_rows.event_id AS Nullable(String)), CAST(expected_rows.event_count AS Nullable(String)), CAST(expected_rows.order_count AS Nullable(String)), CAST(expected_rows.cancellation_count AS Nullable(String)), CAST(expected_rows.refund_count AS Nullable(String)), CAST(expected_rows.units_ordered AS Nullable(String)), CAST(expected_rows.gross_revenue_cents AS Nullable(String))] AS _row_values,",
+      "       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_expected_counts_0 AS expected_rows",
+      "ALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows",
+      "ON isNotDistinctFrom(expected_rows.event_id, actual_rows.event_id) AND isNotDistinctFrom(expected_rows.event_count, actual_rows.event_count) AND isNotDistinctFrom(expected_rows.order_count, actual_rows.order_count) AND isNotDistinctFrom(expected_rows.cancellation_count, actual_rows.cancellation_count) AND isNotDistinctFrom(expected_rows.refund_count, actual_rows.refund_count) AND isNotDistinctFrom(expected_rows.units_ordered, actual_rows.units_ordered) AND isNotDistinctFrom(expected_rows.gross_revenue_cents, actual_rows.gross_revenue_cents)",
+      "WHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)",
+      "UNION ALL",
+      "SELECT 0 AS _case_index, 'unexpected' AS _diff_type,",
+      "       [CAST(actual_rows.event_id AS Nullable(String)), CAST(actual_rows.event_count AS Nullable(String)), CAST(actual_rows.order_count AS Nullable(String)), CAST(actual_rows.cancellation_count AS Nullable(String)), CAST(actual_rows.refund_count AS Nullable(String)), CAST(actual_rows.units_ordered AS Nullable(String)), CAST(actual_rows.gross_revenue_cents AS Nullable(String))] AS _row_values,",
+      "       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_actual_counts_0 AS actual_rows",
+      "ALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows",
+      "ON isNotDistinctFrom(actual_rows.event_id, expected_rows.event_id) AND isNotDistinctFrom(actual_rows.event_count, expected_rows.event_count) AND isNotDistinctFrom(actual_rows.order_count, expected_rows.order_count) AND isNotDistinctFrom(actual_rows.cancellation_count, expected_rows.cancellation_count) AND isNotDistinctFrom(actual_rows.refund_count, expected_rows.refund_count) AND isNotDistinctFrom(actual_rows.units_ordered, expected_rows.units_ordered) AND isNotDistinctFrom(actual_rows.gross_revenue_cents, expected_rows.gross_revenue_cents)",
+      "WHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)",
+      ")"
+    ],
+    "compiled/tests/order_events/order events derive stable region labels.sql": [
+      "(",
+      "WITH",
+      "__ref__commerce_events AS (",
+      "SELECT",
+      "    'evt_001' AS event_id,",
+      "    'order_created' AS event_type,",
+      "    1::UInt16 AS schema_version,",
+      "    'ord_001' AS order_id,",
+      "    'cust_001' AS customer_id,",
+      "    'Northstar USB-C Dock' AS product,",
+      "    'electronics' AS category,",
+      "    2::UInt32 AS quantity,",
+      "    12900::UInt32 AS unit_price_cents,",
+      "    'USD' AS currency,",
+      "    'created' AS status,",
+      "    'us-east' AS region_code,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS event_at,",
+      "    0 AS _replay_partition,",
+      "    1 AS _replay_offset,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_timestamp,",
+      "    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_landed_at",
+      "),",
+      "__model__order_events AS (",
+      "SELECT",
+      "  event_id::String AS event_id,",
+      "  event_type::String AS event_type,",
+      "  schema_version::UInt16 AS schema_version,",
+      "  order_id::String AS order_id,",
+      "  customer_id::String AS customer_id,",
+      "  product::String AS product,",
+      "  category::String AS category,",
+      "  quantity::UInt32 AS quantity,",
+      "  unit_price_cents::UInt32 AS unit_price_cents,",
+      "    currency::String AS currency,",
+      "    status::String AS status,",
+      "    region_code::String AS region_code,",
+      "    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,",
+      "  event_at::DateTime64(3) AS event_at,",
+      "  _replay_partition::Int64 AS _replay_partition,",
+      "  _replay_offset::Int64 AS _replay_offset,",
+      "  _replay_timestamp::DateTime64(3) AS _replay_timestamp,",
+      "  _replay_landed_at::DateTime64(3) AS _replay_landed_at",
+      "FROM __ref__commerce_events",
+      "),",
+      "__sqltide_expected_counts_0 AS (",
+      "SELECT event_id, order_id, region_name, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT",
+      "    CAST(event_id AS String) AS event_id,",
+      "    CAST(order_id AS String) AS order_id,",
+      "    CAST(region_name AS String) AS region_name",
+      "FROM (",
+      "SELECT 'evt_001' AS event_id, 'ord_001' AS order_id, 'US East' AS region_name",
+      ") AS expected_source",
+      ")",
+      "GROUP BY event_id, order_id, region_name",
+      "),",
+      "__sqltide_actual_counts_0 AS (",
+      "SELECT event_id, order_id, region_name, count() AS __sqltide_multiplicity",
+      "FROM (",
+      "SELECT event_id, order_id, region_name FROM __model__order_events",
+      ")",
+      "GROUP BY event_id, order_id, region_name",
+      ")",
+      "SELECT 0 AS _case_index, 'missing' AS _diff_type,",
+      "       [CAST(expected_rows.event_id AS Nullable(String)), CAST(expected_rows.order_id AS Nullable(String)), CAST(expected_rows.region_name AS Nullable(String))] AS _row_values,",
+      "       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_expected_counts_0 AS expected_rows",
+      "ALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows",
+      "ON isNotDistinctFrom(expected_rows.event_id, actual_rows.event_id) AND isNotDistinctFrom(expected_rows.order_id, actual_rows.order_id) AND isNotDistinctFrom(expected_rows.region_name, actual_rows.region_name)",
+      "WHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)",
+      "UNION ALL",
+      "SELECT 0 AS _case_index, 'unexpected' AS _diff_type,",
+      "       [CAST(actual_rows.event_id AS Nullable(String)), CAST(actual_rows.order_id AS Nullable(String)), CAST(actual_rows.region_name AS Nullable(String))] AS _row_values,",
+      "       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity",
+      "FROM __sqltide_actual_counts_0 AS actual_rows",
+      "ALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows",
+      "ON isNotDistinctFrom(actual_rows.event_id, expected_rows.event_id) AND isNotDistinctFrom(actual_rows.order_id, expected_rows.order_id) AND isNotDistinctFrom(actual_rows.region_name, expected_rows.region_name)",
+      "WHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)",
+      ")"
+    ],
+    "manifest.json": {
+      "artifacts": [
+        "manifest.json",
+        "sqltide_dag.json",
+        "compiled/audits/order_events/additive_fact_invariants.sql",
+        "compiled/audits/order_events/event_identity_consistency.sql",
+        "compiled/audits/order_events/no_future_events__orders_no_future_events.sql",
+        "compiled/audits/pipelines/pl__order_events/commerce_events__commerce_events.event_type.accepted_values.1.sql",
+        "compiled/audits/pipelines/pl__order_events/commerce_events__event and order ids are non-empty.sql",
+        "compiled/audits/pipelines/pl__order_events/order_events__order quantities and prices are positive.sql",
+        "compiled/audits/pipelines/pl__order_events/order_events__order_events.currency.accepted_values.1.sql",
+        "compiled/audits/pipelines/pl__order_events/order_events__order_events.status.accepted_values.1.sql",
+        "compiled/models/pl__order_events/commerce_events.sql",
+        "compiled/models/pl__order_events/commerce_kpis.sql",
+        "compiled/models/pl__order_events/order_event_facts.sql",
+        "compiled/models/pl__order_events/order_events.sql",
+        "compiled/resources/models/pl__order_events/commerce_events.mv.sql",
+        "compiled/resources/models/pl__order_events/commerce_events.table.sql",
+        "compiled/resources/models/pl__order_events/commerce_kpis.view.sql",
+        "compiled/resources/models/pl__order_events/order_event_facts.mv.sql",
+        "compiled/resources/models/pl__order_events/order_event_facts.table.sql",
+        "compiled/resources/models/pl__order_events/order_events.mv.sql",
+        "compiled/resources/models/pl__order_events/order_events.table.sql",
+        "compiled/resources/sources/commerce_event_stream/kafka__commerce_event_stream.sql",
+        "compiled/resources/sources/commerce_event_stream/mv__commerce_event_stream.sql",
+        "compiled/resources/sources/commerce_event_stream/raw__commerce_event_stream.sql",
+        "compiled/tests/commerce_kpis/terminal kpis deduplicate facts before deriving rates.sql",
+        "compiled/tests/macro commerce expressions preserve integer money and safe rates/commerce expressions preserve integer money and safe rates.sql",
+        "compiled/tests/order_event_facts/order facts emit additive values.sql",
+        "compiled/tests/order_events/order events derive stable region labels.sql"
+      ],
+      "audits": {
+        "additive_fact_invariants": {
+          "file": "audits/order_events/additive_fact_invariants.sql",
+          "name": "additive_fact_invariants",
+          "path": "compiled/audits/order_events/additive_fact_invariants.sql",
+          "referenced_models": [
+            "order_event_facts"
+          ],
+          "severity": "error"
+        },
+        "commerce_events.event_type.accepted_values.1": {
+          "file": "pipelines/pl__order_events/commerce_events.sql",
+          "name": "commerce_events.event_type.accepted_values.1",
+          "path": "compiled/audits/pipelines/pl__order_events/commerce_events__commerce_events.event_type.accepted_values.1.sql",
+          "referenced_models": [
+            "commerce_events"
+          ],
+          "severity": "error"
+        },
+        "event and order ids are non-empty": {
+          "file": "pipelines/pl__order_events/commerce_events.sql",
+          "name": "event and order ids are non-empty",
+          "path": "compiled/audits/pipelines/pl__order_events/commerce_events__event and order ids are non-empty.sql",
+          "referenced_models": [
+            "commerce_events"
+          ],
+          "severity": "error"
+        },
+        "event_identity_consistency": {
+          "file": "audits/order_events/event_identity_consistency.sql",
+          "name": "event_identity_consistency",
+          "path": "compiled/audits/order_events/event_identity_consistency.sql",
+          "referenced_models": [
+            "commerce_events"
+          ],
+          "severity": "error"
+        },
+        "order quantities and prices are positive": {
+          "file": "pipelines/pl__order_events/order_events.sql",
+          "name": "order quantities and prices are positive",
+          "path": "compiled/audits/pipelines/pl__order_events/order_events__order quantities and prices are positive.sql",
+          "referenced_models": [
+            "order_events"
+          ],
+          "severity": "error"
+        },
+        "order_events.currency.accepted_values.1": {
+          "file": "pipelines/pl__order_events/order_events.sql",
+          "name": "order_events.currency.accepted_values.1",
+          "path": "compiled/audits/pipelines/pl__order_events/order_events__order_events.currency.accepted_values.1.sql",
+          "referenced_models": [
+            "order_events"
+          ],
+          "severity": "error"
+        },
+        "order_events.status.accepted_values.1": {
+          "file": "pipelines/pl__order_events/order_events.sql",
+          "name": "order_events.status.accepted_values.1",
+          "path": "compiled/audits/pipelines/pl__order_events/order_events__order_events.status.accepted_values.1.sql",
+          "referenced_models": [
+            "order_events"
+          ],
+          "severity": "error"
+        },
+        "orders_no_future_events": {
+          "file": "audits/order_events/no_future_events.sql",
+          "name": "orders_no_future_events",
+          "path": "compiled/audits/order_events/no_future_events__orders_no_future_events.sql",
+          "referenced_models": [
+            "order_events"
+          ],
+          "severity": "warning"
+        }
+      },
+      "dependencies": {
+        "allowed_cross_pipeline_references": [],
+        "model_reference_scope": "project"
+      },
+      "macros": {
+        "line_revenue_cents": {
+          "file": "macros/common.py",
+          "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+        },
+        "region_name": {
+          "file": "macros/common.py",
+          "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+        },
+        "safe_rate": {
+          "file": "macros/common.py",
+          "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+        }
+      },
+      "metadata": {
+        "manifest_version": 1,
+        "tool": "sqltide"
+      },
+      "models": {
+        "commerce_events": {
+          "logical_key": "model:commerce_events",
+          "name": "commerce_events",
+          "pipeline": "pl__order_events",
+          "query_path": "compiled/models/pl__order_events/commerce_events.sql",
+          "refs": [
+            "commerce_event_stream"
+          ],
+          "relation_name": "tbl__commerce_events",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__commerce_events",
+              "path": "compiled/resources/models/pl__order_events/commerce_events.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__commerce_events",
+              "path": "compiled/resources/models/pl__order_events/commerce_events.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "commerce_event_stream",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "event_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "event_type",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "schema_version",
+                "type": "UInt16"
+              },
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "customer_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "product",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "category",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "quantity",
+                "type": "UInt32"
+              },
+              {
+                "default": null,
+                "name": "unit_price_cents",
+                "type": "UInt32"
+              },
+              {
+                "default": null,
+                "name": "currency",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "region_code",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "event_at",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_partition",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_offset",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "event_id",
+              "_replay_partition",
+              "_replay_offset"
+            ],
+            "partition_by": "toYYYYMM(_replay_landed_at)",
+            "settings": null,
+            "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+          }
+        },
+        "commerce_kpis": {
+          "logical_key": "model:commerce_kpis",
+          "name": "commerce_kpis",
+          "pipeline": "pl__order_events",
+          "query_path": "compiled/models/pl__order_events/commerce_kpis.sql",
+          "refs": [
+            "order_event_facts"
+          ],
+          "relation_name": "view__commerce_kpis",
+          "resources": [
+            {
+              "kind": "view",
+              "name": "view__commerce_kpis",
+              "path": "compiled/resources/models/pl__order_events/commerce_kpis.view.sql"
+            }
+          ],
+          "source": null,
+          "spec": null
+        },
+        "order_event_facts": {
+          "logical_key": "model:order_event_facts",
+          "name": "order_event_facts",
+          "pipeline": "pl__order_events",
+          "query_path": "compiled/models/pl__order_events/order_event_facts.sql",
+          "refs": [
+            "order_events"
+          ],
+          "relation_name": "tbl__order_event_facts",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__order_event_facts",
+              "path": "compiled/resources/models/pl__order_events/order_event_facts.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__order_event_facts",
+              "path": "compiled/resources/models/pl__order_events/order_event_facts.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "order_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "event_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "category",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "currency",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "region_code",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "region_name",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "event_at",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "event_day",
+                "type": "Date"
+              },
+              {
+                "default": null,
+                "name": "event_count",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "order_count",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "cancellation_count",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "refund_count",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "units_ordered",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "gross_revenue_cents",
+                "type": "UInt64"
+              },
+              {
+                "default": null,
+                "name": "_replay_partition",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_offset",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "event_id",
+              "_replay_partition",
+              "_replay_offset"
+            ],
+            "partition_by": "toYYYYMM(_replay_landed_at)",
+            "settings": null,
+            "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+          }
+        },
+        "order_events": {
+          "logical_key": "model:order_events",
+          "name": "order_events",
+          "pipeline": "pl__order_events",
+          "query_path": "compiled/models/pl__order_events/order_events.sql",
+          "refs": [
+            "commerce_events"
+          ],
+          "relation_name": "tbl__order_events",
+          "resources": [
+            {
+              "kind": "table",
+              "name": "tbl__order_events",
+              "path": "compiled/resources/models/pl__order_events/order_events.table.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__order_events",
+              "path": "compiled/resources/models/pl__order_events/order_events.mv.sql"
+            }
+          ],
+          "retention": null,
+          "source": "commerce_events",
+          "spec": {
+            "columns": [
+              {
+                "default": null,
+                "name": "event_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "event_type",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "schema_version",
+                "type": "UInt16"
+              },
+              {
+                "default": null,
+                "name": "order_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "customer_id",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "product",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "category",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "quantity",
+                "type": "UInt32"
+              },
+              {
+                "default": null,
+                "name": "unit_price_cents",
+                "type": "UInt32"
+              },
+              {
+                "default": null,
+                "name": "currency",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "status",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "region_code",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "region_name",
+                "type": "String"
+              },
+              {
+                "default": null,
+                "name": "event_at",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_partition",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_offset",
+                "type": "Int64"
+              },
+              {
+                "default": null,
+                "name": "_replay_timestamp",
+                "type": "DateTime64(3)"
+              },
+              {
+                "default": null,
+                "name": "_replay_landed_at",
+                "type": "DateTime64(3)"
+              }
+            ],
+            "engine": "MergeTree()",
+            "order_by": [
+              "order_id",
+              "event_at",
+              "event_id",
+              "_replay_offset"
+            ],
+            "partition_by": "toYYYYMM(_replay_landed_at)",
+            "settings": null,
+            "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+          }
+        }
+      },
+      "pipelines": {
+        "pl__order_events": {
+          "file": "pipelines/pl__order_events",
+          "models": [
+            "commerce_events",
+            "commerce_kpis",
+            "order_event_facts",
+            "order_events"
+          ],
+          "name": "pl__order_events",
+          "relations": {
+            "commerce_event_stream": "raw__commerce_event_stream",
+            "commerce_events": "tbl__commerce_events",
+            "commerce_kpis": "view__commerce_kpis",
+            "order_event_facts": "tbl__order_event_facts",
+            "order_events": "tbl__order_events"
+          },
+          "replay_lineage_mode": "offsets",
+          "resolved_database": "orders_demo",
+          "source_name": "commerce_event_stream"
+        }
+      },
+      "sources": {
+        "commerce_event_stream": {
+          "logical_key": "source:commerce_event_stream",
+          "name": "commerce_event_stream",
+          "name_origin": {
+            "kind": "explicit",
+            "macro": null,
+            "macro_fingerprint": null
+          },
+          "relation_name": "raw__commerce_event_stream",
+          "replay_lineage_mode": "offsets",
+          "resources": [
+            {
+              "kind": "managed_source",
+              "name": "kafka__commerce_event_stream",
+              "path": "compiled/resources/sources/commerce_event_stream/kafka__commerce_event_stream.sql"
+            },
+            {
+              "kind": "table",
+              "name": "raw__commerce_event_stream",
+              "path": "compiled/resources/sources/commerce_event_stream/raw__commerce_event_stream.sql"
+            },
+            {
+              "kind": "materialized_view",
+              "name": "mv__commerce_event_stream",
+              "path": "compiled/resources/sources/commerce_event_stream/mv__commerce_event_stream.sql"
+            }
+          ],
+          "retention": null,
+          "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+        }
+      },
+      "tests": {
+        "commerce expressions preserve integer money and safe rates": {
+          "file": "tests/order_events/test_expression_macros.sql",
+          "name": "commerce expressions preserve integer money and safe rates",
+          "path": "compiled/tests/macro commerce expressions preserve integer money and safe rates/commerce expressions preserve integer money and safe rates.sql",
+          "targets": [
+            "macro commerce expressions preserve integer money and safe rates"
+          ]
+        },
+        "order events derive stable region labels": {
+          "file": "tests/order_events/test_order_events.sql",
+          "name": "order events derive stable region labels",
+          "path": "compiled/tests/order_events/order events derive stable region labels.sql",
+          "targets": [
+            "order_events"
+          ]
+        },
+        "order facts emit additive values": {
+          "file": "tests/order_events/test_order_event_facts.sql",
+          "name": "order facts emit additive values",
+          "path": "compiled/tests/order_event_facts/order facts emit additive values.sql",
+          "targets": [
+            "order_event_facts"
+          ]
+        },
+        "terminal kpis deduplicate facts before deriving rates": {
+          "file": "tests/order_events/test_commerce_kpis.sql",
+          "name": "terminal kpis deduplicate facts before deriving rates",
+          "path": "compiled/tests/commerce_kpis/terminal kpis deduplicate facts before deriving rates.sql",
+          "targets": [
+            "commerce_kpis"
+          ]
+        }
+      }
+    },
+    "sqltide_dag.json": {
+      "edges": [
+        {
+          "edge_type": "audit",
+          "from_id": "model:commerce_events",
+          "to_id": "audit:commerce_events.event_type.accepted_values.1"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:commerce_events",
+          "to_id": "audit:event and order ids are non-empty"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:commerce_events",
+          "to_id": "audit:event_identity_consistency"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "model:commerce_events",
+          "to_id": "model:order_events"
+        },
+        {
+          "edge_type": "test",
+          "from_id": "model:commerce_kpis",
+          "to_id": "test:terminal kpis deduplicate facts before deriving rates"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:order_event_facts",
+          "to_id": "audit:additive_fact_invariants"
+        },
+        {
+          "edge_type": "reference",
+          "from_id": "model:order_event_facts",
+          "to_id": "model:commerce_kpis"
+        },
+        {
+          "edge_type": "test",
+          "from_id": "model:order_event_facts",
+          "to_id": "test:order facts emit additive values"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:order_events",
+          "to_id": "audit:order quantities and prices are positive"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:order_events",
+          "to_id": "audit:order_events.currency.accepted_values.1"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:order_events",
+          "to_id": "audit:order_events.status.accepted_values.1"
+        },
+        {
+          "edge_type": "audit",
+          "from_id": "model:order_events",
+          "to_id": "audit:orders_no_future_events"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "model:order_events",
+          "to_id": "model:order_event_facts"
+        },
+        {
+          "edge_type": "test",
+          "from_id": "model:order_events",
+          "to_id": "test:order events derive stable region labels"
+        },
+        {
+          "edge_type": "driving_input",
+          "from_id": "source:commerce_event_stream",
+          "to_id": "model:commerce_events"
+        }
+      ],
+      "macros": [
+        "line_revenue_cents",
+        "region_name",
+        "safe_rate"
+      ],
+      "metadata": {
+        "dag_version": 1,
+        "tool": "sqltide"
+      },
+      "nodes": [
+        {
+          "id": "source:commerce_event_stream",
+          "name": "commerce_event_stream",
+          "type": "source"
+        },
+        {
+          "id": "model:commerce_events",
+          "name": "commerce_events",
+          "type": "model"
+        },
+        {
+          "id": "model:commerce_kpis",
+          "name": "commerce_kpis",
+          "type": "model"
+        },
+        {
+          "id": "model:order_event_facts",
+          "name": "order_event_facts",
+          "type": "model"
+        },
+        {
+          "id": "model:order_events",
+          "name": "order_events",
+          "type": "model"
+        },
+        {
+          "id": "test:commerce expressions preserve integer money and safe rates",
+          "name": "commerce expressions preserve integer money and safe rates",
+          "type": "test"
+        },
+        {
+          "id": "test:order events derive stable region labels",
+          "name": "order events derive stable region labels",
+          "type": "test"
+        },
+        {
+          "id": "test:order facts emit additive values",
+          "name": "order facts emit additive values",
+          "type": "test"
+        },
+        {
+          "id": "test:terminal kpis deduplicate facts before deriving rates",
+          "name": "terminal kpis deduplicate facts before deriving rates",
+          "type": "test"
+        },
+        {
+          "id": "audit:additive_fact_invariants",
+          "name": "additive_fact_invariants",
+          "type": "audit"
+        },
+        {
+          "id": "audit:commerce_events.event_type.accepted_values.1",
+          "name": "commerce_events.event_type.accepted_values.1",
+          "type": "audit"
+        },
+        {
+          "id": "audit:event and order ids are non-empty",
+          "name": "event and order ids are non-empty",
+          "type": "audit"
+        },
+        {
+          "id": "audit:event_identity_consistency",
+          "name": "event_identity_consistency",
+          "type": "audit"
+        },
+        {
+          "id": "audit:order quantities and prices are positive",
+          "name": "order quantities and prices are positive",
+          "type": "audit"
+        },
+        {
+          "id": "audit:order_events.currency.accepted_values.1",
+          "name": "order_events.currency.accepted_values.1",
+          "type": "audit"
+        },
+        {
+          "id": "audit:order_events.status.accepted_values.1",
+          "name": "order_events.status.accepted_values.1",
+          "type": "audit"
+        },
+        {
+          "id": "audit:orders_no_future_events",
+          "name": "orders_no_future_events",
+          "type": "audit"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "audits": [
+      {
+        "description": "Additive flags and money must agree for every lifecycle event fact.",
+        "file": "<project>/audits/order_events/additive_fact_invariants.sql",
+        "genericName": null,
+        "identity": {
+          "bindingKey": "a3f88f0c01bd6547e79ed63a5602d31eeb795be85a9a8ef8e874d4834ebc4e6b",
+          "definitionFingerprint": "e2c141748297f6c1366bb30c015b598b37f4be108c13772b29d68c30fabc5002",
+          "executionFingerprint": "6495a83d1d49f7c01b4c02e3fb229235e16b8e14e8499c0f19cdc0d59bf5a118"
+        },
+        "name": "additive_fact_invariants",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "order_event_facts"
+        ],
+        "severity": "error",
+        "sql": "SELECT event_id, event_count, order_count, cancellation_count, refund_count, gross_revenue_cents\nFROM __ref(\"order_event_facts\")\nWHERE event_count != 1\n   OR order_count + cancellation_count + refund_count > event_count\n   OR (order_count = 0 AND gross_revenue_cents != 0)\n   OR (order_count = 1 AND gross_revenue_cents = 0)"
+      },
+      {
+        "description": "One event id must never identify conflicting commerce event bodies.",
+        "file": "<project>/audits/order_events/event_identity_consistency.sql",
+        "genericName": null,
+        "identity": {
+          "bindingKey": "1d415a45564c6d15a5550a2357cda73b6873da5a1956a82a3327d0d80efddb43",
+          "definitionFingerprint": "0e8c1bec7b8bf84daa50d94dc463db30b40dabdd99f4cdb1846504c977eb6657",
+          "executionFingerprint": "2caf532c3006ea0347a41a0bf7d81f9f8c866ee478459b7602c0c69b7a743e9b"
+        },
+        "name": "event_identity_consistency",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "commerce_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT event_id, count() AS physical_rows\nFROM __ref(\"commerce_events\")\nGROUP BY event_id\nHAVING uniqExact(tuple(\n  event_type,\n  schema_version,\n  order_id,\n  customer_id,\n  product,\n  category,\n  quantity,\n  unit_price_cents,\n  currency,\n  status,\n  region_code,\n  event_at\n)) > 1"
+      },
+      {
+        "description": "Warn when an order event is more than two seconds ahead of the ClickHouse clock.",
+        "file": "<project>/audits/order_events/no_future_events.sql",
+        "genericName": null,
+        "identity": {
+          "bindingKey": "c6da1395954cece4ed094f9dc400c8fe810cef1772ca5e20e0ac2bed0aadb852",
+          "definitionFingerprint": "903087d38ed05c9986372559709f0f21cdbe35dbdf7d90b9ad29c9d06496a45d",
+          "executionFingerprint": "3b7ce6811f23be1da51f1c924c67ebba3ff603c5c3af58e8f174cf1eae2eec8c"
+        },
+        "name": "orders_no_future_events",
+        "policy": {
+          "cadenceSeconds": 10,
+          "scheduled": true,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "order_events"
+        ],
+        "severity": "warning",
+        "sql": "SELECT event_id, order_id, event_at\nFROM __ref(\"order_events\")\nWHERE event_at > now64(3) + INTERVAL 2 SECOND"
+      },
+      {
+        "description": null,
+        "file": "<project>/pipelines/pl__order_events/commerce_events.sql",
+        "genericName": "expression_is_true",
+        "identity": {
+          "bindingKey": "df941fb04f30a549734a03f3cc86b9177cfcd999c94ed671d9d65179ff18b252",
+          "definitionFingerprint": "ee3b4e75a8252672322b4ec9a89d95955630811977644d556bac6a23ae00549a",
+          "executionFingerprint": "795e01e89a168cdb0f4af8f7d485c39ddbf398e8f9104e29e95eb1508a81be87"
+        },
+        "name": "event and order ids are non-empty",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "commerce_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT *\nFROM __ref(\"commerce_events\")\nWHERE NOT (length(event_id) > 0 AND length(order_id) > 0)"
+      },
+      {
+        "description": null,
+        "file": "<project>/pipelines/pl__order_events/commerce_events.sql",
+        "genericName": "accepted_values",
+        "identity": {
+          "bindingKey": "6dd2a1327b173f8e3154aa96fbf5c71ecb249fafa3fe2fddb43837918a505827",
+          "definitionFingerprint": "22b8c503a9cd36c77f662c2702403d1d6f08c9fa8b1d27f7f474cc2a76d6f0e3",
+          "executionFingerprint": "67090b4f115064fb38e135ba89fd80abd7ce2e5b5a87445d0f99d6c9b5d0a0eb"
+        },
+        "name": "commerce_events.event_type.accepted_values.1",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "commerce_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT event_type\nFROM __ref(\"commerce_events\")\nWHERE event_type NOT IN ('order_created', 'order_status_changed')"
+      },
+      {
+        "description": null,
+        "file": "<project>/pipelines/pl__order_events/order_events.sql",
+        "genericName": "expression_is_true",
+        "identity": {
+          "bindingKey": "45c98092e8976808c58fa0b0c7aeb8a07e3d526322050ccf5494a54c5553bd7a",
+          "definitionFingerprint": "dfc482d80d8e68989e9993502dbe7e1bad668bd73d0acd1d9d7e4ecf9379ef2c",
+          "executionFingerprint": "d91ee1529db495b5e83bf579919edf0be29ab1a89ba50066f59b0347b50e4d8a"
+        },
+        "name": "order quantities and prices are positive",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "order_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT *\nFROM __ref(\"order_events\")\nWHERE NOT (quantity > 0 AND unit_price_cents > 0)"
+      },
+      {
+        "description": null,
+        "file": "<project>/pipelines/pl__order_events/order_events.sql",
+        "genericName": "accepted_values",
+        "identity": {
+          "bindingKey": "4542016787d40bf3d7f26162a368312904a215a928218d1f81c31b9df9a506b2",
+          "definitionFingerprint": "97a132e9c0d095147a70992f5e1abc5c7a264c16f23ceff35519b7424c30a71f",
+          "executionFingerprint": "6687d67d5f4dc00a93dab4455953ecaf156a7b6c354a00ea70521ed124296526"
+        },
+        "name": "order_events.currency.accepted_values.1",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "order_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT currency\nFROM __ref(\"order_events\")\nWHERE currency NOT IN ('USD')"
+      },
+      {
+        "description": null,
+        "file": "<project>/pipelines/pl__order_events/order_events.sql",
+        "genericName": "accepted_values",
+        "identity": {
+          "bindingKey": "a4abdf3f543dd91d3cd6a6a7a8eb3fed16139d440eaaf7528745e25f1084d52c",
+          "definitionFingerprint": "1373fb4c12a3fa8e8b5aa867884086bcac523e5f80001f6e3cf7b5978d9fad4b",
+          "executionFingerprint": "287c54109c599e75ff2f6182199948e50ed712c4a545bc0de5cd0a0361d171d7"
+        },
+        "name": "order_events.status.accepted_values.1",
+        "policy": {
+          "cadenceSeconds": null,
+          "scheduled": false,
+          "warmupSeconds": 0
+        },
+        "referencedModels": [
+          "order_events"
+        ],
+        "severity": "error",
+        "sql": "SELECT status\nFROM __ref(\"order_events\")\nWHERE status NOT IN ('created', 'paid', 'shipped', 'delivered', 'cancelled', 'refunded')"
+      }
+    ],
+    "macros": [
+      {
+        "description": "Return an overflow-safe integer expression for one created order.",
+        "file": "macros/common.py",
+        "name": "line_revenue_cents",
+        "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+      },
+      {
+        "description": "Map stable demo region codes without a mutable side table.",
+        "file": "macros/common.py",
+        "name": "region_name",
+        "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+      },
+      {
+        "description": "Return a Float64 rate that is zero when its denominator is zero.",
+        "file": "macros/common.py",
+        "name": "safe_rate",
+        "source": "\"\"\"Small SQL expression macros used by the commerce models and tests.\"\"\"\n\n\ndef line_revenue_cents(quantity_column: str, unit_price_column: str) -> str:\n    \"\"\"Return an overflow-safe integer expression for one created order.\"\"\"\n\n    return f\"toUInt64({quantity_column}) * toUInt64({unit_price_column})\"\n\n\ndef safe_rate(numerator_column: str, denominator_column: str) -> str:\n    \"\"\"Return a Float64 rate that is zero when its denominator is zero.\"\"\"\n\n    return (\n        f\"if({denominator_column} = 0, 0.0, \"\n        f\"toFloat64({numerator_column}) / toFloat64({denominator_column}))\"\n    )\n\n\ndef region_name(region_column: str) -> str:\n    \"\"\"Map stable demo region codes without a mutable side table.\"\"\"\n\n    return (\n        f\"multiIf({region_column} = 'us-east', 'US East', \"\n        f\"{region_column} = 'us-west', 'US West', \"\n        f\"{region_column} = 'eu-west', 'Europe West', \"\n        f\"{region_column} = 'ap-south', 'Asia Pacific South', {region_column})\"\n    )\n"
+      }
+    ],
+    "models": [
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": "Producer-assigned idempotency key for one commerce event.",
+            "name": "event_id",
+            "type": "String"
+          },
+          {
+            "description": "Envelope discriminator for created orders and later lifecycle changes.",
+            "name": "event_type",
+            "type": "String"
+          },
+          {
+            "description": "Version of the producer event contract.",
+            "name": "schema_version",
+            "type": "UInt16"
+          },
+          {
+            "description": "Order identifier shared by every event in one lifecycle.",
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "customer_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "product",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "description": "Native integer item quantity carried by the order lifecycle.",
+            "name": "quantity",
+            "type": "UInt32"
+          },
+          {
+            "description": "Native integer unit price in the event currency.",
+            "name": "unit_price_cents",
+            "type": "UInt32"
+          },
+          {
+            "description": "ISO 4217 currency code.",
+            "name": "currency",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "description": "Stable code used to enrich events from region definitions.",
+            "name": "region_code",
+            "type": "String"
+          },
+          {
+            "description": "UTC business timestamp assigned by the producer.",
+            "name": "event_at",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_partition",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_offset",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": "Typed order lifecycle envelope parsed from the retained Kafka source.",
+        "drivingInput": "commerce_event_stream",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__commerce_events",
+        "name": "commerce_events",
+        "pipeline": "pl__order_events",
+        "refs": [
+          {
+            "isSource": true,
+            "name": "commerce_event_stream",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__commerce_events",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  description \"Typed order lifecycle envelope parsed from the retained Kafka source.\",\n  order_by [\"event_id\", \"_replay_partition\", \"_replay_offset\"],\n  partition_by \"toYYYYMM(_replay_landed_at)\",\n  ttl \"_replay_landed_at + INTERVAL 7 DAY\",\n  columns (\n    event_id (description \"Producer-assigned idempotency key for one commerce event.\"),\n    event_type (\n      description \"Envelope discriminator for created orders and later lifecycle changes.\",\n      audits [\n        accepted_values (\n          values [\"order_created\", \"order_status_changed\"],\n        ),\n      ],\n    ),\n    schema_version (description \"Version of the producer event contract.\"),\n    order_id (description \"Order identifier shared by every event in one lifecycle.\"),\n    quantity (description \"Native integer item quantity carried by the order lifecycle.\"),\n    unit_price_cents (description \"Native integer unit price in the event currency.\"),\n    currency (description \"ISO 4217 currency code.\"),\n    region_code (description \"Stable code used to enrich events from region definitions.\"),\n    event_at (description \"UTC business timestamp assigned by the producer.\"),\n  ),\n  audits [\n    expression_is_true (\n      name \"event and order ids are non-empty\",\n      expression \"length(event_id) > 0 AND length(order_id) > 0\",\n    ),\n  ],\n);\n\nSELECT\n  JSONExtractString(kafka_value, 'event_id')::String AS event_id,\n  JSONExtractString(kafka_value, 'event_type')::String AS event_type,\n  toUInt16(JSONExtractUInt(kafka_value, 'schema_version'))::UInt16 AS schema_version,\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  JSONExtractString(kafka_value, 'customer_id')::String AS customer_id,\n  JSONExtractString(kafka_value, 'product')::String AS product,\n  JSONExtractString(kafka_value, 'category')::String AS category,\n  toUInt32(JSONExtractUInt(kafka_value, 'quantity'))::UInt32 AS quantity,\n  toUInt32(JSONExtractUInt(kafka_value, 'unit_price_cents'))::UInt32 AS unit_price_cents,\n  JSONExtractString(kafka_value, 'currency')::String AS currency,\n  JSONExtractString(kafka_value, 'status')::String AS status,\n  JSONExtractString(kafka_value, 'region_code')::String AS region_code,\n  parseDateTime64BestEffort(JSONExtractString(kafka_value, 'event_at'), 3)::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __source(\"commerce_event_stream\")\n",
+          "compiled": "SELECT\n  JSONExtractString(kafka_value, 'event_id')::String AS event_id,\n  JSONExtractString(kafka_value, 'event_type')::String AS event_type,\n  toUInt16(JSONExtractUInt(kafka_value, 'schema_version'))::UInt16 AS schema_version,\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  JSONExtractString(kafka_value, 'customer_id')::String AS customer_id,\n  JSONExtractString(kafka_value, 'product')::String AS product,\n  JSONExtractString(kafka_value, 'category')::String AS category,\n  toUInt32(JSONExtractUInt(kafka_value, 'quantity'))::UInt32 AS quantity,\n  toUInt32(JSONExtractUInt(kafka_value, 'unit_price_cents'))::UInt32 AS unit_price_cents,\n  JSONExtractString(kafka_value, 'currency')::String AS currency,\n  JSONExtractString(kafka_value, 'status')::String AS status,\n  JSONExtractString(kafka_value, 'region_code')::String AS region_code,\n  parseDateTime64BestEffort(JSONExtractString(kafka_value, 'event_at'), 3)::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM raw__commerce_event_stream",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW orders_demo.mv__commerce_events\nTO orders_demo.tbl__commerce_events AS\nSELECT\n  JSONExtractString(kafka_value, 'event_id')::String AS event_id,\n  JSONExtractString(kafka_value, 'event_type')::String AS event_type,\n  toUInt16(JSONExtractUInt(kafka_value, 'schema_version'))::UInt16 AS schema_version,\n  JSONExtractString(kafka_value, 'order_id')::String AS order_id,\n  JSONExtractString(kafka_value, 'customer_id')::String AS customer_id,\n  JSONExtractString(kafka_value, 'product')::String AS product,\n  JSONExtractString(kafka_value, 'category')::String AS category,\n  toUInt32(JSONExtractUInt(kafka_value, 'quantity'))::UInt32 AS quantity,\n  toUInt32(JSONExtractUInt(kafka_value, 'unit_price_cents'))::UInt32 AS unit_price_cents,\n  JSONExtractString(kafka_value, 'currency')::String AS currency,\n  JSONExtractString(kafka_value, 'status')::String AS status,\n  JSONExtractString(kafka_value, 'region_code')::String AS region_code,\n  parseDateTime64BestEffort(JSONExtractString(kafka_value, 'event_at'), 3)::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM orders_demo.raw__commerce_event_stream",
+            "table": "CREATE TABLE orders_demo.tbl__commerce_events (\n    event_id String,\n    event_type String,\n    schema_version UInt16,\n    order_id String,\n    customer_id String,\n    product String,\n    category String,\n    quantity UInt32,\n    unit_price_cents UInt32,\n    currency String,\n    status String,\n    region_code String,\n    event_at DateTime64(3),\n    _replay_partition Int64,\n    _replay_offset Int64,\n    _replay_timestamp DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (event_id, _replay_partition, _replay_offset)\nPARTITION BY toYYYYMM(_replay_landed_at)\nTTL _replay_landed_at + INTERVAL 7 DAY",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "event_id",
+            "_replay_partition",
+            "_replay_offset"
+          ],
+          "partitionBy": "toYYYYMM(_replay_landed_at)",
+          "settings": null,
+          "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+        }
+      },
+      {
+        "anchor": "view",
+        "columns": [
+          {
+            "description": "UTC calendar day represented by the KPI row.",
+            "name": "event_day",
+            "type": "Date"
+          },
+          {
+            "description": null,
+            "name": "currency",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_code",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_name",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "event_count",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "order_count",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "cancellation_count",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "refund_count",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "units_ordered",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "gross_revenue_cents",
+            "type": "UInt64"
+          },
+          {
+            "description": "Gross created-order value in major currency units.",
+            "name": "gross_revenue",
+            "type": "Float64"
+          },
+          {
+            "description": "Gross value divided by created orders, or zero without orders.",
+            "name": "average_order_value",
+            "type": "Float64"
+          },
+          {
+            "description": "Cancelled events divided by created orders, or zero without orders.",
+            "name": "cancellation_rate",
+            "type": "Float64"
+          },
+          {
+            "description": "Refunded events divided by created orders, or zero without orders.",
+            "name": "refund_rate",
+            "type": "Float64"
+          }
+        ],
+        "description": "Terminal KPI view that deduplicates event facts before deriving daily metrics.",
+        "drivingInput": null,
+        "isAggregate": true,
+        "kind": "view",
+        "mvRelationName": null,
+        "name": "commerce_kpis",
+        "pipeline": "pl__order_events",
+        "refs": [
+          {
+            "isSource": false,
+            "name": "order_event_facts",
+            "type": "reference"
+          }
+        ],
+        "relationName": "view__commerce_kpis",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  kind view,\n  description \"Terminal KPI view that deduplicates event facts before deriving daily metrics.\",\n  columns (\n    event_day (description \"UTC calendar day represented by the KPI row.\"),\n    gross_revenue (description \"Gross created-order value in major currency units.\"),\n    average_order_value (description \"Gross value divided by created orders, or zero without orders.\"),\n    cancellation_rate (description \"Cancelled events divided by created orders, or zero without orders.\"),\n    refund_rate (description \"Refunded events divided by created orders, or zero without orders.\"),\n  ),\n);\n\nSELECT\n  event_day::Date AS event_day,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  category::String AS category,\n  event_count::UInt64 AS event_count,\n  order_count::UInt64 AS order_count,\n  cancellation_count::UInt64 AS cancellation_count,\n  refund_count::UInt64 AS refund_count,\n  units_ordered::UInt64 AS units_ordered,\n  gross_revenue_cents::UInt64 AS gross_revenue_cents,\n  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,\n  (@safe_rate(\"gross_revenue_cents\", \"order_count\") / 100.0)::Float64 AS average_order_value,\n  @safe_rate(\"cancellation_count\", \"order_count\")::Float64 AS cancellation_rate,\n  @safe_rate(\"refund_count\", \"order_count\")::Float64 AS refund_rate\nFROM (\n  SELECT\n    event_day,\n    currency,\n    region_code,\n    region_name,\n    category,\n    sum(event_count)::UInt64 AS event_count,\n    sum(order_count)::UInt64 AS order_count,\n    sum(cancellation_count)::UInt64 AS cancellation_count,\n    sum(refund_count)::UInt64 AS refund_count,\n    sum(units_ordered)::UInt64 AS units_ordered,\n    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents\n  FROM (\n    SELECT\n      event_id,\n      argMax(event_day, _replay_offset) AS event_day,\n      argMax(currency, _replay_offset) AS currency,\n      argMax(region_code, _replay_offset) AS region_code,\n      argMax(region_name, _replay_offset) AS region_name,\n      argMax(category, _replay_offset) AS category,\n      argMax(event_count, _replay_offset) AS event_count,\n      argMax(order_count, _replay_offset) AS order_count,\n      argMax(cancellation_count, _replay_offset) AS cancellation_count,\n      argMax(refund_count, _replay_offset) AS refund_count,\n      argMax(units_ordered, _replay_offset) AS units_ordered,\n      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents\n    FROM __ref(\"order_event_facts\")\n    GROUP BY event_id\n  )\n  GROUP BY event_day, currency, region_code, region_name, category\n)\n",
+          "compiled": "SELECT\n  event_day::Date AS event_day,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  category::String AS category,\n  event_count::UInt64 AS event_count,\n  order_count::UInt64 AS order_count,\n  cancellation_count::UInt64 AS cancellation_count,\n  refund_count::UInt64 AS refund_count,\n  units_ordered::UInt64 AS units_ordered,\n  gross_revenue_cents::UInt64 AS gross_revenue_cents,\n  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,\n  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,\n  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,\n  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate\nFROM (\n  SELECT\n    event_day,\n    currency,\n    region_code,\n    region_name,\n    category,\n    sum(event_count)::UInt64 AS event_count,\n    sum(order_count)::UInt64 AS order_count,\n    sum(cancellation_count)::UInt64 AS cancellation_count,\n    sum(refund_count)::UInt64 AS refund_count,\n    sum(units_ordered)::UInt64 AS units_ordered,\n    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents\n  FROM (\n    SELECT\n      event_id,\n      argMax(event_day, _replay_offset) AS event_day,\n      argMax(currency, _replay_offset) AS currency,\n      argMax(region_code, _replay_offset) AS region_code,\n      argMax(region_name, _replay_offset) AS region_name,\n      argMax(category, _replay_offset) AS category,\n      argMax(event_count, _replay_offset) AS event_count,\n      argMax(order_count, _replay_offset) AS order_count,\n      argMax(cancellation_count, _replay_offset) AS cancellation_count,\n      argMax(refund_count, _replay_offset) AS refund_count,\n      argMax(units_ordered, _replay_offset) AS units_ordered,\n      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents\n    FROM tbl__order_event_facts\n    GROUP BY event_id\n  )\n  GROUP BY event_day, currency, region_code, region_name, category\n)",
+          "ddl": {
+            "materializedView": null,
+            "table": null,
+            "view": "CREATE VIEW orders_demo.view__commerce_kpis AS\nSELECT\n  event_day::Date AS event_day,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  category::String AS category,\n  event_count::UInt64 AS event_count,\n  order_count::UInt64 AS order_count,\n  cancellation_count::UInt64 AS cancellation_count,\n  refund_count::UInt64 AS refund_count,\n  units_ordered::UInt64 AS units_ordered,\n  gross_revenue_cents::UInt64 AS gross_revenue_cents,\n  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,\n  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,\n  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,\n  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate\nFROM (\n  SELECT\n    event_day,\n    currency,\n    region_code,\n    region_name,\n    category,\n    sum(event_count)::UInt64 AS event_count,\n    sum(order_count)::UInt64 AS order_count,\n    sum(cancellation_count)::UInt64 AS cancellation_count,\n    sum(refund_count)::UInt64 AS refund_count,\n    sum(units_ordered)::UInt64 AS units_ordered,\n    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents\n  FROM (\n    SELECT\n      event_id,\n      argMax(event_day, _replay_offset) AS event_day,\n      argMax(currency, _replay_offset) AS currency,\n      argMax(region_code, _replay_offset) AS region_code,\n      argMax(region_name, _replay_offset) AS region_name,\n      argMax(category, _replay_offset) AS category,\n      argMax(event_count, _replay_offset) AS event_count,\n      argMax(order_count, _replay_offset) AS order_count,\n      argMax(cancellation_count, _replay_offset) AS cancellation_count,\n      argMax(refund_count, _replay_offset) AS refund_count,\n      argMax(units_ordered, _replay_offset) AS units_ordered,\n      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents\n    FROM orders_demo.tbl__order_event_facts\n    GROUP BY event_id\n  )\n  GROUP BY event_day, currency, region_code, region_name, category\n)"
+          }
+        },
+        "storage": null
+      },
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": "Stable lifecycle event id used by terminal deduplication.",
+            "name": "event_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "currency",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_code",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_name",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "event_at",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "event_day",
+            "type": "Date"
+          },
+          {
+            "description": "Additive count of lifecycle events; always one per row.",
+            "name": "event_count",
+            "type": "UInt64"
+          },
+          {
+            "description": "Additive count of order-created events.",
+            "name": "order_count",
+            "type": "UInt64"
+          },
+          {
+            "description": "Additive count of cancelled events.",
+            "name": "cancellation_count",
+            "type": "UInt64"
+          },
+          {
+            "description": "Additive count of refunded events.",
+            "name": "refund_count",
+            "type": "UInt64"
+          },
+          {
+            "description": "Additive units from order-created events only.",
+            "name": "units_ordered",
+            "type": "UInt64"
+          },
+          {
+            "description": "Additive created-order value in integer cents.",
+            "name": "gross_revenue_cents",
+            "type": "UInt64"
+          },
+          {
+            "description": null,
+            "name": "_replay_partition",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_offset",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": "Append-only additive facts; terminal consumers deduplicate by stable event id.",
+        "drivingInput": "order_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__order_event_facts",
+        "name": "order_event_facts",
+        "pipeline": "pl__order_events",
+        "refs": [
+          {
+            "isSource": false,
+            "name": "order_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__order_event_facts",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  description \"Append-only additive facts; terminal consumers deduplicate by stable event id.\",\n  order_by [\"event_id\", \"_replay_partition\", \"_replay_offset\"],\n  partition_by \"toYYYYMM(_replay_landed_at)\",\n  ttl \"_replay_landed_at + INTERVAL 7 DAY\",\n  columns (\n    event_id (description \"Stable lifecycle event id used by terminal deduplication.\"),\n    event_count (description \"Additive count of lifecycle events; always one per row.\"),\n    order_count (description \"Additive count of order-created events.\"),\n    cancellation_count (description \"Additive count of cancelled events.\"),\n    refund_count (description \"Additive count of refunded events.\"),\n    units_ordered (description \"Additive units from order-created events only.\"),\n    gross_revenue_cents (description \"Additive created-order value in integer cents.\"),\n  ),\n);\n\nSELECT\n  event_id::String AS event_id,\n  order_id::String AS order_id,\n  category::String AS category,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  toDate(event_at)::Date AS event_day,\n  1::UInt64 AS event_count,\n  toUInt64(status = 'created')::UInt64 AS order_count,\n  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,\n  toUInt64(status = 'refunded')::UInt64 AS refund_count,\n  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,\n  if(status = 'created', @line_revenue_cents(\"quantity\", \"unit_price_cents\"), 0)::UInt64 AS gross_revenue_cents,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __ref(\"order_events\")\n",
+          "compiled": "SELECT\n  event_id::String AS event_id,\n  order_id::String AS order_id,\n  category::String AS category,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  toDate(event_at)::Date AS event_day,\n  1::UInt64 AS event_count,\n  toUInt64(status = 'created')::UInt64 AS order_count,\n  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,\n  toUInt64(status = 'refunded')::UInt64 AS refund_count,\n  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,\n  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM tbl__order_events",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW orders_demo.mv__order_event_facts\nTO orders_demo.tbl__order_event_facts AS\nSELECT\n  event_id::String AS event_id,\n  order_id::String AS order_id,\n  category::String AS category,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  toDate(event_at)::Date AS event_day,\n  1::UInt64 AS event_count,\n  toUInt64(status = 'created')::UInt64 AS order_count,\n  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,\n  toUInt64(status = 'refunded')::UInt64 AS refund_count,\n  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,\n  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM orders_demo.tbl__order_events",
+            "table": "CREATE TABLE orders_demo.tbl__order_event_facts (\n    event_id String,\n    order_id String,\n    category String,\n    currency String,\n    region_code String,\n    region_name String,\n    event_at DateTime64(3),\n    event_day Date,\n    event_count UInt64,\n    order_count UInt64,\n    cancellation_count UInt64,\n    refund_count UInt64,\n    units_ordered UInt64,\n    gross_revenue_cents UInt64,\n    _replay_partition Int64,\n    _replay_offset Int64,\n    _replay_timestamp DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (event_id, _replay_partition, _replay_offset)\nPARTITION BY toYYYYMM(_replay_landed_at)\nTTL _replay_landed_at + INTERVAL 7 DAY",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "event_id",
+            "_replay_partition",
+            "_replay_offset"
+          ],
+          "partitionBy": "toYYYYMM(_replay_landed_at)",
+          "settings": null,
+          "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+        }
+      },
+      {
+        "anchor": "eligible",
+        "columns": [
+          {
+            "description": "Unique lifecycle event identifier.",
+            "name": "event_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "event_type",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "schema_version",
+            "type": "UInt16"
+          },
+          {
+            "description": "Order identifier shared by all events in one lifecycle.",
+            "name": "order_id",
+            "type": "String"
+          },
+          {
+            "description": "Synthetic customer identifier.",
+            "name": "customer_id",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "product",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "category",
+            "type": "String"
+          },
+          {
+            "description": "Positive item quantity fixed when the order is created.",
+            "name": "quantity",
+            "type": "UInt32"
+          },
+          {
+            "description": "Unit price in integer minor currency units.",
+            "name": "unit_price_cents",
+            "type": "UInt32"
+          },
+          {
+            "description": "ISO 4217 currency code.",
+            "name": "currency",
+            "type": "String"
+          },
+          {
+            "description": "Order lifecycle state represented by this event.",
+            "name": "status",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_code",
+            "type": "String"
+          },
+          {
+            "description": null,
+            "name": "region_name",
+            "type": "String"
+          },
+          {
+            "description": "UTC business timestamp used for retention and daily metrics.",
+            "name": "event_at",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_partition",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_offset",
+            "type": "Int64"
+          },
+          {
+            "description": null,
+            "name": "_replay_timestamp",
+            "type": "DateTime64(3)"
+          },
+          {
+            "description": null,
+            "name": "_replay_landed_at",
+            "type": "DateTime64(3)"
+          }
+        ],
+        "description": "Validated order-created and order-status-change events.",
+        "drivingInput": "commerce_events",
+        "isAggregate": false,
+        "kind": "table",
+        "mvRelationName": "mv__order_events",
+        "name": "order_events",
+        "pipeline": "pl__order_events",
+        "refs": [
+          {
+            "isSource": false,
+            "name": "commerce_events",
+            "type": "driving_input"
+          }
+        ],
+        "relationName": "tbl__order_events",
+        "retention": null,
+        "sql": {
+          "authored": "MODEL (\n  description \"Validated order-created and order-status-change events.\",\n  order_by [\"order_id\", \"event_at\", \"event_id\", \"_replay_offset\"],\n  partition_by \"toYYYYMM(_replay_landed_at)\",\n  ttl \"_replay_landed_at + INTERVAL 7 DAY\",\n  columns (\n    event_id (description \"Unique lifecycle event identifier.\"),\n    order_id (description \"Order identifier shared by all events in one lifecycle.\"),\n    customer_id (description \"Synthetic customer identifier.\"),\n    quantity (description \"Positive item quantity fixed when the order is created.\"),\n    unit_price_cents (description \"Unit price in integer minor currency units.\"),\n    currency (description \"ISO 4217 currency code.\", audits [accepted_values (values [\"USD\"])]),\n    status (\n      description \"Order lifecycle state represented by this event.\",\n      audits [\n        accepted_values (\n          values [\"created\", \"paid\", \"shipped\", \"delivered\", \"cancelled\", \"refunded\"],\n        ),\n      ],\n    ),\n    event_at (description \"UTC business timestamp used for retention and daily metrics.\"),\n  ),\n  audits [\n    expression_is_true (\n      name \"order quantities and prices are positive\",\n      expression \"quantity > 0 AND unit_price_cents > 0\",\n    ),\n  ],\n);\n\nSELECT\n  event_id::String AS event_id,\n  event_type::String AS event_type,\n  schema_version::UInt16 AS schema_version,\n  order_id::String AS order_id,\n  customer_id::String AS customer_id,\n  product::String AS product,\n  category::String AS category,\n  quantity::UInt32 AS quantity,\n  unit_price_cents::UInt32 AS unit_price_cents,\n    currency::String AS currency,\n    status::String AS status,\n    region_code::String AS region_code,\n    @region_name(\"region_code\")::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __ref(\"commerce_events\")\n",
+          "compiled": "SELECT\n  event_id::String AS event_id,\n  event_type::String AS event_type,\n  schema_version::UInt16 AS schema_version,\n  order_id::String AS order_id,\n  customer_id::String AS customer_id,\n  product::String AS product,\n  category::String AS category,\n  quantity::UInt32 AS quantity,\n  unit_price_cents::UInt32 AS unit_price_cents,\n    currency::String AS currency,\n    status::String AS status,\n    region_code::String AS region_code,\n    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM tbl__commerce_events",
+          "ddl": {
+            "materializedView": "CREATE MATERIALIZED VIEW orders_demo.mv__order_events\nTO orders_demo.tbl__order_events AS\nSELECT\n  event_id::String AS event_id,\n  event_type::String AS event_type,\n  schema_version::UInt16 AS schema_version,\n  order_id::String AS order_id,\n  customer_id::String AS customer_id,\n  product::String AS product,\n  category::String AS category,\n  quantity::UInt32 AS quantity,\n  unit_price_cents::UInt32 AS unit_price_cents,\n    currency::String AS currency,\n    status::String AS status,\n    region_code::String AS region_code,\n    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM orders_demo.tbl__commerce_events",
+            "table": "CREATE TABLE orders_demo.tbl__order_events (\n    event_id String,\n    event_type String,\n    schema_version UInt16,\n    order_id String,\n    customer_id String,\n    product String,\n    category String,\n    quantity UInt32,\n    unit_price_cents UInt32,\n    currency String,\n    status String,\n    region_code String,\n    region_name String,\n    event_at DateTime64(3),\n    _replay_partition Int64,\n    _replay_offset Int64,\n    _replay_timestamp DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (order_id, event_at, event_id, _replay_offset)\nPARTITION BY toYYYYMM(_replay_landed_at)\nTTL _replay_landed_at + INTERVAL 7 DAY",
+            "view": null
+          }
+        },
+        "storage": {
+          "engine": "MergeTree()",
+          "orderBy": [
+            "order_id",
+            "event_at",
+            "event_id",
+            "_replay_offset"
+          ],
+          "partitionBy": "toYYYYMM(_replay_landed_at)",
+          "settings": null,
+          "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+        }
+      }
+    ],
+    "pipelines": [
+      {
+        "auditDefaults": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "boundaryMode": "offsets",
+        "directory": "pipelines/pl__order_events",
+        "mode": "direct",
+        "models": [
+          "commerce_events",
+          "commerce_kpis",
+          "order_event_facts",
+          "order_events"
+        ],
+        "name": "pl__order_events",
+        "naming": {
+          "tablePrefix": null,
+          "viewPrefix": null
+        },
+        "protection": null,
+        "sourceName": "commerce_event_stream"
+      }
+    ],
+    "project": {
+      "adapter": "clickhouse",
+      "auditScheduler": {
+        "enabled": true
+      },
+      "connection": {
+        "host": "localhost",
+        "port": 18123,
+        "username": "clickhouse"
+      },
+      "database": "orders_demo",
+      "defaults": {
+        "audits": {
+          "cadenceSeconds": null,
+          "severity": null,
+          "warmupSeconds": null
+        },
+        "freshness": null,
+        "kafkaBrokerList": "redpanda.localhost:19092",
+        "managedSourceTtl": null,
+        "modelTtl": null,
+        "models": {
+          "retention": null
+        },
+        "sources": {
+          "kafka": {
+            "retention": null
+          }
+        }
+      },
+      "dependencies": {
+        "allowedCrossPipelineReferences": [],
+        "modelReferenceScope": "project"
+      },
+      "name": "orders_demo",
+      "naming": {
+        "tablePrefix": "tbl__",
+        "viewPrefix": "view__"
+      },
+      "target": "demo",
+      "ui": {
+        "timezone": "UTC"
+      },
+      "vars": {}
+    },
+    "sources": [
+      {
+        "boundaryMode": "offsets",
+        "columnMapping": null,
+        "freshness": {
+          "errorAfter": "2m",
+          "warnAfter": "30s"
+        },
+        "kafka": {
+          "brokerList": "redpanda.localhost:19092",
+          "consumerGroup": "streambuild_orders_demo_demo_commerce_event_stream_orders_demo",
+          "format": "JSONAsString",
+          "settings": null,
+          "topic": "source.order_events.live"
+        },
+        "kind": "kafka",
+        "managedRelations": [
+          {
+            "ddl": "CREATE TABLE orders_demo.kafka__commerce_event_stream (\n    message String\n) ENGINE = Kafka\nSETTINGS kafka_broker_list = 'redpanda.localhost:19092', kafka_topic_list = 'source.order_events.live', kafka_group_name = 'streambuild_orders_demo_demo_commerce_event_stream_orders_demo', kafka_format = 'JSONAsString'",
+            "kind": "kafka_engine",
+            "name": "kafka__commerce_event_stream"
+          },
+          {
+            "ddl": "CREATE TABLE orders_demo.raw__commerce_event_stream (\n    kafka_key String,\n    kafka_value String,\n    kafka_topic String,\n    kafka_partition Int32,\n    kafka_offset Int64,\n    kafka_timestamp Nullable(DateTime64(3)),\n    _replay_partition Int32,\n    _replay_offset Int64,\n    _replay_timestamp Nullable(DateTime64(3)),\n    kafka_header_keys Array(String),\n    kafka_header_values Array(String),\n    kafka_landed_at DateTime64(3),\n    _replay_landed_at DateTime64(3)\n) ENGINE = MergeTree()\nORDER BY (_replay_partition, _replay_offset)\nTTL _replay_landed_at + INTERVAL 7 DAY",
+            "kind": "landing_table",
+            "name": "raw__commerce_event_stream"
+          },
+          {
+            "ddl": "CREATE MATERIALIZED VIEW orders_demo.mv__commerce_event_stream\nTO orders_demo.raw__commerce_event_stream AS\nSELECT\n  _key AS kafka_key,\n  message AS kafka_value,\n  _topic AS kafka_topic,\n  _partition AS kafka_partition,\n  _offset AS kafka_offset,\n  _timestamp_ms AS kafka_timestamp,\n  _partition AS _replay_partition,\n  _offset AS _replay_offset,\n  _timestamp_ms AS _replay_timestamp,\n  _headers.name AS kafka_header_keys,\n  _headers.value AS kafka_header_values,\n  now64(3) AS kafka_landed_at,\n  now64(3) AS _replay_landed_at\nFROM orders_demo.kafka__commerce_event_stream",
+            "kind": "landing_mv",
+            "name": "mv__commerce_event_stream"
+          }
+        ],
+        "name": "commerce_event_stream",
+        "nameOrigin": {
+          "kind": "explicit",
+          "macro": null,
+          "macroFingerprint": null
+        },
+        "refresh": null,
+        "relationName": "raw__commerce_event_stream",
+        "retention": null,
+        "ttl": "_replay_landed_at + INTERVAL 7 DAY"
+      }
+    ],
+    "tests": [
+      {
+        "file": "<project>/tests/order_events/test_commerce_kpis.sql",
+        "identity": {
+          "bindingKey": "bb455f4b19d97555de6cfdb0912702a45542697e425484aea2c7b2d4948cfcd2",
+          "definitionFingerprint": "b1133023503ee5eed84ea9f8318b7ed518307ed84049b9d39916f8955fbc0011",
+          "executionFingerprint": "09308df055d75dd36e90a821188900239d33b5e08e2b8b460a9318721bfc4080"
+        },
+        "name": "terminal kpis deduplicate facts before deriving rates",
+        "sql": "(\nWITH\n__ref__order_event_facts AS (\nSELECT\n    'evt_created' AS event_id,\n    toDate('2026-08-23') AS event_day,\n    'USD' AS currency,\n    'us-east' AS region_code,\n    'US East' AS region_name,\n    'electronics' AS category,\n    1::UInt64 AS event_count,\n    1::UInt64 AS order_count,\n    0::UInt64 AS cancellation_count,\n    0::UInt64 AS refund_count,\n    2::UInt64 AS units_ordered,\n    2500::UInt64 AS gross_revenue_cents,\n    1::Int64 AS _replay_offset\n  UNION ALL\n  SELECT\n    'evt_created', toDate('2026-08-23'), 'USD', 'us-east', 'US East', 'electronics',\n    1::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 2::UInt64, 2500::UInt64, 2::Int64\n  UNION ALL\n  SELECT\n    'evt_cancelled', toDate('2026-08-23'), 'USD', 'us-east', 'US East', 'electronics',\n    1::UInt64, 0::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 0::UInt64, 3::Int64\n),\n__model__commerce_kpis AS (\nSELECT\n  event_day::Date AS event_day,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  category::String AS category,\n  event_count::UInt64 AS event_count,\n  order_count::UInt64 AS order_count,\n  cancellation_count::UInt64 AS cancellation_count,\n  refund_count::UInt64 AS refund_count,\n  units_ordered::UInt64 AS units_ordered,\n  gross_revenue_cents::UInt64 AS gross_revenue_cents,\n  (gross_revenue_cents / 100.0)::Float64 AS gross_revenue,\n  (if(order_count = 0, 0.0, toFloat64(gross_revenue_cents) / toFloat64(order_count)) / 100.0)::Float64 AS average_order_value,\n  if(order_count = 0, 0.0, toFloat64(cancellation_count) / toFloat64(order_count))::Float64 AS cancellation_rate,\n  if(order_count = 0, 0.0, toFloat64(refund_count) / toFloat64(order_count))::Float64 AS refund_rate\nFROM (\n  SELECT\n    event_day,\n    currency,\n    region_code,\n    region_name,\n    category,\n    sum(event_count)::UInt64 AS event_count,\n    sum(order_count)::UInt64 AS order_count,\n    sum(cancellation_count)::UInt64 AS cancellation_count,\n    sum(refund_count)::UInt64 AS refund_count,\n    sum(units_ordered)::UInt64 AS units_ordered,\n    sum(gross_revenue_cents)::UInt64 AS gross_revenue_cents\n  FROM (\n    SELECT\n      event_id,\n      argMax(event_day, _replay_offset) AS event_day,\n      argMax(currency, _replay_offset) AS currency,\n      argMax(region_code, _replay_offset) AS region_code,\n      argMax(region_name, _replay_offset) AS region_name,\n      argMax(category, _replay_offset) AS category,\n      argMax(event_count, _replay_offset) AS event_count,\n      argMax(order_count, _replay_offset) AS order_count,\n      argMax(cancellation_count, _replay_offset) AS cancellation_count,\n      argMax(refund_count, _replay_offset) AS refund_count,\n      argMax(units_ordered, _replay_offset) AS units_ordered,\n      argMax(gross_revenue_cents, _replay_offset) AS gross_revenue_cents\n    FROM __ref__order_event_facts\n    GROUP BY event_id\n  )\n  GROUP BY event_day, currency, region_code, region_name, category\n)\n),\n__sqltide_expected_counts_0 AS (\nSELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate, count() AS __sqltide_multiplicity\nFROM (\nSELECT\n    CAST(event_day AS Date) AS event_day,\n    CAST(event_count AS UInt64) AS event_count,\n    CAST(order_count AS UInt64) AS order_count,\n    CAST(cancellation_count AS UInt64) AS cancellation_count,\n    CAST(units_ordered AS UInt64) AS units_ordered,\n    CAST(gross_revenue_cents AS UInt64) AS gross_revenue_cents,\n    CAST(gross_revenue AS Float64) AS gross_revenue,\n    CAST(average_order_value AS Float64) AS average_order_value,\n    CAST(cancellation_rate AS Float64) AS cancellation_rate\nFROM (\nSELECT\n    toDate('2026-08-23') AS event_day,\n    2::UInt64 AS event_count,\n    1::UInt64 AS order_count,\n    1::UInt64 AS cancellation_count,\n    2::UInt64 AS units_ordered,\n    2500::UInt64 AS gross_revenue_cents,\n    25.0 AS gross_revenue,\n    25.0 AS average_order_value,\n    1.0 AS cancellation_rate\n) AS expected_source\n)\nGROUP BY event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate\n),\n__sqltide_actual_counts_0 AS (\nSELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate, count() AS __sqltide_multiplicity\nFROM (\nSELECT event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate FROM __model__commerce_kpis\n)\nGROUP BY event_day, event_count, order_count, cancellation_count, units_ordered, gross_revenue_cents, gross_revenue, average_order_value, cancellation_rate\n)\nSELECT 0 AS _case_index, 'missing' AS _diff_type,\n       [CAST(expected_rows.event_day AS Nullable(String)), CAST(expected_rows.event_count AS Nullable(String)), CAST(expected_rows.order_count AS Nullable(String)), CAST(expected_rows.cancellation_count AS Nullable(String)), CAST(expected_rows.units_ordered AS Nullable(String)), CAST(expected_rows.gross_revenue_cents AS Nullable(String)), CAST(expected_rows.gross_revenue AS Nullable(String)), CAST(expected_rows.average_order_value AS Nullable(String)), CAST(expected_rows.cancellation_rate AS Nullable(String))] AS _row_values,\n       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_expected_counts_0 AS expected_rows\nALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows\nON isNotDistinctFrom(expected_rows.event_day, actual_rows.event_day) AND isNotDistinctFrom(expected_rows.event_count, actual_rows.event_count) AND isNotDistinctFrom(expected_rows.order_count, actual_rows.order_count) AND isNotDistinctFrom(expected_rows.cancellation_count, actual_rows.cancellation_count) AND isNotDistinctFrom(expected_rows.units_ordered, actual_rows.units_ordered) AND isNotDistinctFrom(expected_rows.gross_revenue_cents, actual_rows.gross_revenue_cents) AND isNotDistinctFrom(expected_rows.gross_revenue, actual_rows.gross_revenue) AND isNotDistinctFrom(expected_rows.average_order_value, actual_rows.average_order_value) AND isNotDistinctFrom(expected_rows.cancellation_rate, actual_rows.cancellation_rate)\nWHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)\nUNION ALL\nSELECT 0 AS _case_index, 'unexpected' AS _diff_type,\n       [CAST(actual_rows.event_day AS Nullable(String)), CAST(actual_rows.event_count AS Nullable(String)), CAST(actual_rows.order_count AS Nullable(String)), CAST(actual_rows.cancellation_count AS Nullable(String)), CAST(actual_rows.units_ordered AS Nullable(String)), CAST(actual_rows.gross_revenue_cents AS Nullable(String)), CAST(actual_rows.gross_revenue AS Nullable(String)), CAST(actual_rows.average_order_value AS Nullable(String)), CAST(actual_rows.cancellation_rate AS Nullable(String))] AS _row_values,\n       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_actual_counts_0 AS actual_rows\nALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows\nON isNotDistinctFrom(actual_rows.event_day, expected_rows.event_day) AND isNotDistinctFrom(actual_rows.event_count, expected_rows.event_count) AND isNotDistinctFrom(actual_rows.order_count, expected_rows.order_count) AND isNotDistinctFrom(actual_rows.cancellation_count, expected_rows.cancellation_count) AND isNotDistinctFrom(actual_rows.units_ordered, expected_rows.units_ordered) AND isNotDistinctFrom(actual_rows.gross_revenue_cents, expected_rows.gross_revenue_cents) AND isNotDistinctFrom(actual_rows.gross_revenue, expected_rows.gross_revenue) AND isNotDistinctFrom(actual_rows.average_order_value, expected_rows.average_order_value) AND isNotDistinctFrom(actual_rows.cancellation_rate, expected_rows.cancellation_rate)\nWHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)\n)",
+        "targets": [
+          "commerce_kpis"
+        ]
+      },
+      {
+        "file": "<project>/tests/order_events/test_expression_macros.sql",
+        "identity": {
+          "bindingKey": "54bfdf1aa5bc5209bf6600cc48a93c5e716a79b9a095f8653e74f9a0961494dc",
+          "definitionFingerprint": "da1cacd5b79215598714d572dfcd0309c3fac1c70a346f9ba269bf1ed3c8fbba",
+          "executionFingerprint": "ded6feee04f743d6b18193bc63e890ba5fbac1fff0344f57392ea1e3d1f97075"
+        },
+        "name": "commerce expressions preserve integer money and safe rates",
+        "sql": "(\nWITH\n__sqltide_expected_counts_0 AS (\nSELECT line_revenue_cents, cancellation_rate, region_name, count() AS __sqltide_multiplicity\nFROM (\nSELECT 3897::UInt64 AS line_revenue_cents, 0.0 AS cancellation_rate, 'Europe West' AS region_name\n)\nGROUP BY line_revenue_cents, cancellation_rate, region_name\n),\n__sqltide_actual_counts_0 AS (\nSELECT line_revenue_cents, cancellation_rate, region_name, count() AS __sqltide_multiplicity\nFROM (\nSELECT\n    toUInt64(quantity) * toUInt64(unit_price_cents) AS line_revenue_cents,\n    if(orders = 0, 0.0, toFloat64(cancelled) / toFloat64(orders)) AS cancellation_rate,\n    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code) AS region_name\n  FROM (\n    SELECT\n      3::UInt32 AS quantity,\n      1299::UInt32 AS unit_price_cents,\n      0 AS cancelled,\n      0 AS orders,\n      'eu-west' AS region_code\n  )\n)\nGROUP BY line_revenue_cents, cancellation_rate, region_name\n)\nSELECT 0 AS _case_index, 'missing' AS _diff_type,\n       [CAST(expected_rows.line_revenue_cents AS Nullable(String)), CAST(expected_rows.cancellation_rate AS Nullable(String)), CAST(expected_rows.region_name AS Nullable(String))] AS _row_values,\n       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_expected_counts_0 AS expected_rows\nALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows\nON isNotDistinctFrom(expected_rows.line_revenue_cents, actual_rows.line_revenue_cents) AND isNotDistinctFrom(expected_rows.cancellation_rate, actual_rows.cancellation_rate) AND isNotDistinctFrom(expected_rows.region_name, actual_rows.region_name)\nWHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)\nUNION ALL\nSELECT 0 AS _case_index, 'unexpected' AS _diff_type,\n       [CAST(actual_rows.line_revenue_cents AS Nullable(String)), CAST(actual_rows.cancellation_rate AS Nullable(String)), CAST(actual_rows.region_name AS Nullable(String))] AS _row_values,\n       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_actual_counts_0 AS actual_rows\nALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows\nON isNotDistinctFrom(actual_rows.line_revenue_cents, expected_rows.line_revenue_cents) AND isNotDistinctFrom(actual_rows.cancellation_rate, expected_rows.cancellation_rate) AND isNotDistinctFrom(actual_rows.region_name, expected_rows.region_name)\nWHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)\n)",
+        "targets": [
+          "macro commerce expressions preserve integer money and safe rates"
+        ]
+      },
+      {
+        "file": "<project>/tests/order_events/test_order_event_facts.sql",
+        "identity": {
+          "bindingKey": "6654986f6514c8fd533d06e77e048a81b37f241dacf4c63f09914c68a38bad54",
+          "definitionFingerprint": "6bf0f00d286646e05e040ff3b5c0dd31f21ea19a1194feca27d6d935a5de602f",
+          "executionFingerprint": "74068abbd2bd23870d5a6f8e79cacda41ac537ba5053245c43d44ca0b57d9cae"
+        },
+        "name": "order facts emit additive values",
+        "sql": "(\nWITH\n__ref__order_events AS (\nSELECT\n    'evt_created' AS event_id,\n    'ord_001' AS order_id,\n    'electronics' AS category,\n    'USD' AS currency,\n    'us-east' AS region_code,\n    'US East' AS region_name,\n    'created' AS status,\n    2::UInt32 AS quantity,\n    1250::UInt32 AS unit_price_cents,\n    toDateTime64('2026-08-23 10:00:00', 3) AS event_at,\n    0 AS _replay_partition,\n    1 AS _replay_offset,\n    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_timestamp,\n    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_landed_at\n  UNION ALL\n  SELECT\n    'evt_cancelled', 'ord_001', 'electronics', 'USD', 'us-east', 'US East',\n    'cancelled', 2::UInt32, 1250::UInt32,\n    toDateTime64('2026-08-23 10:05:00', 3), 0, 2,\n    toDateTime64('2026-08-23 10:05:00', 3),\n    toDateTime64('2026-08-23 10:05:00', 3)\n),\n__model__order_event_facts AS (\nSELECT\n  event_id::String AS event_id,\n  order_id::String AS order_id,\n  category::String AS category,\n  currency::String AS currency,\n  region_code::String AS region_code,\n  region_name::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  toDate(event_at)::Date AS event_day,\n  1::UInt64 AS event_count,\n  toUInt64(status = 'created')::UInt64 AS order_count,\n  toUInt64(status = 'cancelled')::UInt64 AS cancellation_count,\n  toUInt64(status = 'refunded')::UInt64 AS refund_count,\n  if(status = 'created', toUInt64(quantity), 0)::UInt64 AS units_ordered,\n  if(status = 'created', toUInt64(quantity) * toUInt64(unit_price_cents), 0)::UInt64 AS gross_revenue_cents,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __ref__order_events\n),\n__sqltide_expected_counts_0 AS (\nSELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents, count() AS __sqltide_multiplicity\nFROM (\nSELECT\n    CAST(event_id AS String) AS event_id,\n    CAST(event_count AS UInt64) AS event_count,\n    CAST(order_count AS UInt64) AS order_count,\n    CAST(cancellation_count AS UInt64) AS cancellation_count,\n    CAST(refund_count AS UInt64) AS refund_count,\n    CAST(units_ordered AS UInt64) AS units_ordered,\n    CAST(gross_revenue_cents AS UInt64) AS gross_revenue_cents\nFROM (\nSELECT\n    'evt_created' AS event_id,\n    1::UInt64 AS event_count,\n    1::UInt64 AS order_count,\n    0::UInt64 AS cancellation_count,\n    0::UInt64 AS refund_count,\n    2::UInt64 AS units_ordered,\n    2500::UInt64 AS gross_revenue_cents\n  UNION ALL\n  SELECT 'evt_cancelled', 1::UInt64, 0::UInt64, 1::UInt64, 0::UInt64, 0::UInt64, 0::UInt64\n) AS expected_source\n)\nGROUP BY event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents\n),\n__sqltide_actual_counts_0 AS (\nSELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents, count() AS __sqltide_multiplicity\nFROM (\nSELECT event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents FROM __model__order_event_facts\n)\nGROUP BY event_id, event_count, order_count, cancellation_count, refund_count, units_ordered, gross_revenue_cents\n)\nSELECT 0 AS _case_index, 'missing' AS _diff_type,\n       [CAST(expected_rows.event_id AS Nullable(String)), CAST(expected_rows.event_count AS Nullable(String)), CAST(expected_rows.order_count AS Nullable(String)), CAST(expected_rows.cancellation_count AS Nullable(String)), CAST(expected_rows.refund_count AS Nullable(String)), CAST(expected_rows.units_ordered AS Nullable(String)), CAST(expected_rows.gross_revenue_cents AS Nullable(String))] AS _row_values,\n       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_expected_counts_0 AS expected_rows\nALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows\nON isNotDistinctFrom(expected_rows.event_id, actual_rows.event_id) AND isNotDistinctFrom(expected_rows.event_count, actual_rows.event_count) AND isNotDistinctFrom(expected_rows.order_count, actual_rows.order_count) AND isNotDistinctFrom(expected_rows.cancellation_count, actual_rows.cancellation_count) AND isNotDistinctFrom(expected_rows.refund_count, actual_rows.refund_count) AND isNotDistinctFrom(expected_rows.units_ordered, actual_rows.units_ordered) AND isNotDistinctFrom(expected_rows.gross_revenue_cents, actual_rows.gross_revenue_cents)\nWHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)\nUNION ALL\nSELECT 0 AS _case_index, 'unexpected' AS _diff_type,\n       [CAST(actual_rows.event_id AS Nullable(String)), CAST(actual_rows.event_count AS Nullable(String)), CAST(actual_rows.order_count AS Nullable(String)), CAST(actual_rows.cancellation_count AS Nullable(String)), CAST(actual_rows.refund_count AS Nullable(String)), CAST(actual_rows.units_ordered AS Nullable(String)), CAST(actual_rows.gross_revenue_cents AS Nullable(String))] AS _row_values,\n       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_actual_counts_0 AS actual_rows\nALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows\nON isNotDistinctFrom(actual_rows.event_id, expected_rows.event_id) AND isNotDistinctFrom(actual_rows.event_count, expected_rows.event_count) AND isNotDistinctFrom(actual_rows.order_count, expected_rows.order_count) AND isNotDistinctFrom(actual_rows.cancellation_count, expected_rows.cancellation_count) AND isNotDistinctFrom(actual_rows.refund_count, expected_rows.refund_count) AND isNotDistinctFrom(actual_rows.units_ordered, expected_rows.units_ordered) AND isNotDistinctFrom(actual_rows.gross_revenue_cents, expected_rows.gross_revenue_cents)\nWHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)\n)",
+        "targets": [
+          "order_event_facts"
+        ]
+      },
+      {
+        "file": "<project>/tests/order_events/test_order_events.sql",
+        "identity": {
+          "bindingKey": "fac914195b73eebe21c2b7bd4f8b0279b9592d61bdc3825376bdb43dc87dcd84",
+          "definitionFingerprint": "95ece2a3d21b13250bc4175b8591d524a0f0bb73ad8115bb6469b92d2c5a5b06",
+          "executionFingerprint": "e37460b79385e3c8c3ef84e8ba124909fb20e94777b92430a3f81ccd4dcd7e76"
+        },
+        "name": "order events derive stable region labels",
+        "sql": "(\nWITH\n__ref__commerce_events AS (\nSELECT\n    'evt_001' AS event_id,\n    'order_created' AS event_type,\n    1::UInt16 AS schema_version,\n    'ord_001' AS order_id,\n    'cust_001' AS customer_id,\n    'Northstar USB-C Dock' AS product,\n    'electronics' AS category,\n    2::UInt32 AS quantity,\n    12900::UInt32 AS unit_price_cents,\n    'USD' AS currency,\n    'created' AS status,\n    'us-east' AS region_code,\n    toDateTime64('2026-08-23 10:00:00', 3) AS event_at,\n    0 AS _replay_partition,\n    1 AS _replay_offset,\n    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_timestamp,\n    toDateTime64('2026-08-23 10:00:00', 3) AS _replay_landed_at\n),\n__model__order_events AS (\nSELECT\n  event_id::String AS event_id,\n  event_type::String AS event_type,\n  schema_version::UInt16 AS schema_version,\n  order_id::String AS order_id,\n  customer_id::String AS customer_id,\n  product::String AS product,\n  category::String AS category,\n  quantity::UInt32 AS quantity,\n  unit_price_cents::UInt32 AS unit_price_cents,\n    currency::String AS currency,\n    status::String AS status,\n    region_code::String AS region_code,\n    multiIf(region_code = 'us-east', 'US East', region_code = 'us-west', 'US West', region_code = 'eu-west', 'Europe West', region_code = 'ap-south', 'Asia Pacific South', region_code)::String AS region_name,\n  event_at::DateTime64(3) AS event_at,\n  _replay_partition::Int64 AS _replay_partition,\n  _replay_offset::Int64 AS _replay_offset,\n  _replay_timestamp::DateTime64(3) AS _replay_timestamp,\n  _replay_landed_at::DateTime64(3) AS _replay_landed_at\nFROM __ref__commerce_events\n),\n__sqltide_expected_counts_0 AS (\nSELECT event_id, order_id, region_name, count() AS __sqltide_multiplicity\nFROM (\nSELECT\n    CAST(event_id AS String) AS event_id,\n    CAST(order_id AS String) AS order_id,\n    CAST(region_name AS String) AS region_name\nFROM (\nSELECT 'evt_001' AS event_id, 'ord_001' AS order_id, 'US East' AS region_name\n) AS expected_source\n)\nGROUP BY event_id, order_id, region_name\n),\n__sqltide_actual_counts_0 AS (\nSELECT event_id, order_id, region_name, count() AS __sqltide_multiplicity\nFROM (\nSELECT event_id, order_id, region_name FROM __model__order_events\n)\nGROUP BY event_id, order_id, region_name\n)\nSELECT 0 AS _case_index, 'missing' AS _diff_type,\n       [CAST(expected_rows.event_id AS Nullable(String)), CAST(expected_rows.order_id AS Nullable(String)), CAST(expected_rows.region_name AS Nullable(String))] AS _row_values,\n       expected_rows.__sqltide_multiplicity - ifNull(actual_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_expected_counts_0 AS expected_rows\nALL LEFT JOIN __sqltide_actual_counts_0 AS actual_rows\nON isNotDistinctFrom(expected_rows.event_id, actual_rows.event_id) AND isNotDistinctFrom(expected_rows.order_id, actual_rows.order_id) AND isNotDistinctFrom(expected_rows.region_name, actual_rows.region_name)\nWHERE expected_rows.__sqltide_multiplicity > ifNull(actual_rows.__sqltide_multiplicity, 0)\nUNION ALL\nSELECT 0 AS _case_index, 'unexpected' AS _diff_type,\n       [CAST(actual_rows.event_id AS Nullable(String)), CAST(actual_rows.order_id AS Nullable(String)), CAST(actual_rows.region_name AS Nullable(String))] AS _row_values,\n       actual_rows.__sqltide_multiplicity - ifNull(expected_rows.__sqltide_multiplicity, 0) AS _multiplicity\nFROM __sqltide_actual_counts_0 AS actual_rows\nALL LEFT JOIN __sqltide_expected_counts_0 AS expected_rows\nON isNotDistinctFrom(actual_rows.event_id, expected_rows.event_id) AND isNotDistinctFrom(actual_rows.order_id, expected_rows.order_id) AND isNotDistinctFrom(actual_rows.region_name, expected_rows.region_name)\nWHERE actual_rows.__sqltide_multiplicity > ifNull(expected_rows.__sqltide_multiplicity, 0)\n)",
+        "targets": [
+          "order_events"
+        ]
+      }
+    ],
+    "versionKey": "golden"
+  },
+  "exit_code": 0,
+  "project": "orders_demo",
+  "stderr": [],
+  "stdout": [
+    "Wrote compile artifacts to <project>/target",
+    "Pipelines: 1",
+    "Models: 4"
+  ]
+}

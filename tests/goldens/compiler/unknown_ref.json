@@ -1,0 +1,12 @@
+{
+  "artifacts": {},
+  "definitions": null,
+  "exit_code": 1,
+  "project": "unknown_ref",
+  "stderr": [
+    "error [SQT-DISCOVERY-001] Pipeline directory '<project>/pipelines/pl__orders' references unknown driving input 'missing_model'",
+    "phase: discovery",
+    "--> <project>/sqltide_project.toml:1:1"
+  ],
+  "stdout": []
+}

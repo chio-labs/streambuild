@@ -1,4 +1,4 @@
-.PHONY: dist test-browser test-e2e test-integration ui-verify
+.PHONY: dist rust-check rust-test test-browser test-e2e test-goldens test-integration ui-verify
 
 NPM_VERSION := 11.6.2
 
@@ -16,7 +16,22 @@ type:
 
 
 test:
+	$(MAKE) rust-test
 	uv run pytest tests/unit -q -n auto
+	$(MAKE) test-goldens
+
+
+test-goldens:
+	uv run python -m scripts.check_compiler_goldens
+
+
+rust-test:
+	uv run cargo test --workspace --locked
+
+
+rust-check:
+	uv run cargo fmt --all --check
+	uv run cargo clippy --workspace --all-targets --locked -- -D warnings
 
 
 test-integration:
@@ -43,13 +58,17 @@ test-browser:
 
 
 check:
+	cargo fmt --all
 	uv run ruff format .
 	uv run ruff check --fix .
 	uv run ty check src tests scripts
 	uv run fensu check
+	$(MAKE) rust-check
 
 
 verify:
+	cargo fmt --all
+	$(MAKE) rust-check
 	uv run ruff format .
 	uv run ruff check --fix .
 	uv run ty check src tests scripts
@@ -84,7 +103,7 @@ dist:
 	$(MAKE) ui-build
 	rm -f dist/*.whl dist/*.tar.gz
 	uv build
-	uv run python scripts/verify_wheel_assets.py
+	uv run python -m scripts.verify_wheel_assets
 
 
 ui-dev:
@@ -96,9 +115,11 @@ check-ci:
 	uv run ruff check .
 	uv run ty check src tests scripts
 	uv run fensu check
+	$(MAKE) rust-check
 
 
 verify-ci:
+	$(MAKE) rust-check
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run ty check src tests scripts
