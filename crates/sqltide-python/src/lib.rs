@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+mod sql_scan;
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList};
@@ -49,5 +51,5 @@ fn value_object<'py>(py: Python<'py>, value: &HeaderValue) -> PyResult<Bound<'py
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(parse_model_header, module)?)?;
-    Ok(())
+    sql_scan::register(module)
 }

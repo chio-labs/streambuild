@@ -8,9 +8,11 @@ from sqltide.compiler.sql_analysis._helpers.polyglot import (
     generate_sql_tree,
     parse_sql_trees,
 )
-from sqltide.compiler.sql_analysis._helpers.projection_spans import outer_projection_spans
 from sqltide.compiler.sql_analysis._helpers.projections import build_model_projections
-from sqltide.compiler.sql_analysis._helpers.scanning import extract_references_impl
+from sqltide.compiler.sql_analysis._helpers.scanning import (
+    extract_references_impl,
+    outer_projection_spans,
+)
 from sqltide.compiler.sql_analysis._helpers.storage import analyze_storage_expressions
 from sqltide.compiler.sql_analysis.constants import (
     POLYGLOT_EXCEPT_KEY,

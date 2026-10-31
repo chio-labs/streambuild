@@ -1,13 +1,12 @@
 """Shared SQL lexical scanning behavior for compiler-owned syntaxes."""
 
-from sqltide.compiler.sql_analysis._helpers.cte_scanning import (
-    extract_top_level_ctes_impl,
-    try_consume_keyword_impl,
-)
 from sqltide.compiler.sql_analysis._helpers.scanning import (
+    extract_top_level_ctes_impl,
     find_matching_parenthesis,
+    find_next_macro_start,
     find_next_unquoted_character,
     skip_trivia,
+    try_consume_keyword_impl,
 )
 from sqltide.compiler.sql_analysis.models import SqlTopLevelCtes
 
@@ -34,6 +33,12 @@ class SqlLexicalScanner:
             character=character,
             start=start,
         )
+
+    @staticmethod
+    def find_next_macro_start(*, sql: str, start: int) -> int | None:
+        """Find the next `@name(` macro call outside comments and quoted text."""
+
+        return find_next_macro_start(sql=sql, start=start)
 
     @staticmethod
     def skip_trivia(*, sql: str, start: int) -> int:
