@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "crates/sqltide-sqltext",
+    "crates/sqltide-python",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.42.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+rust-version = "1.88"
+
+[workspace.dependencies]
+pyo3 = { version = "0.26", features = ["abi3-py312"] }
+sqltide-sqltext = { path = "crates/sqltide-sqltext" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+await_holding_lock = "deny"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = false
+
+[profile.release]
+strip = "symbols"

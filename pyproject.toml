@@ -1,6 +1,9 @@
 [build-system]
-requires = ["hatchling>=1.27.0"]
-build-backend = "hatchling.build"
+requires = [
+  "maturin>=1.9,<2",
+  "patchelf>=0.17.2; sys_platform == 'linux'",
+]
+build-backend = "maturin"
 
 [project]
 name = "sqltide"
@@ -47,12 +50,13 @@ dev = [
   "ty>=0.0.1a19",
 ]
 
-[tool.hatch.build]
+[tool.maturin]
+manifest-path = "crates/sqltide-python/Cargo.toml"
+module-name = "sqltide._native"
+python-source = "src"
+features = ["extension-module"]
 # Built dev UI is gitignored but must ship in distributions (`make dist`).
-artifacts = ["src/sqltide/dev_server/static/**"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/sqltide", "scripts"]
+include = [{ path = "src/sqltide/dev_server/static/**/*", format = ["sdist", "wheel"] }]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -63,6 +67,7 @@ update_changelog_on_bump = false
 [tool.pytest.ini_options]
 addopts = ["--strict-markers"]
 testpaths = ["tests"]
+pythonpath = ["."]
 norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 markers = [
   "integration: marks tests that require real external services",
@@ -80,4 +85,12 @@ select = ["B", "E", "F", "I", "UP"]
 
 [tool.uv]
 package = true
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "Cargo.toml" },
+  { file = "Cargo.lock" },
+  { file = "crates/*/Cargo.toml" },
+  { file = "crates/*/src/**/*.rs" },
+  { file = "src/sqltide/_native.pyi" },
+]
 required-version = ">=0.12.3,<0.13"

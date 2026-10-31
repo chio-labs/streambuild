@@ -1,0 +1,23 @@
+[package]
+name = "sqltide-python"
+version.workspace = true
+description = "The sqltide._native Python extension module."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "_native"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3.workspace = true
+sqltide-sqltext.workspace = true
+
+[lints]
+workspace = true
