@@ -56,7 +56,7 @@ examples/orders_demo/target
 .fensu/cache/
 
 # Dev UI (source in ui/, built assets packaged by `make ui-build`)
-ui/node_modules/
+node_modules/
 ui/.svelte-kit/
 ui/build/
 src/streambuild/dev_server/static/
