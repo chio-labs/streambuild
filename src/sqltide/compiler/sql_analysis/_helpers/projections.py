@@ -3,7 +3,7 @@
 from typing import Any, cast
 
 from sqltide.compiler.sql_analysis._helpers.polyglot import generate_sql_tree
-from sqltide.compiler.sql_analysis._helpers.projection_spans import (
+from sqltide.compiler.sql_analysis._helpers.scanning import (
     outer_double_colon_type,
     outer_star_span,
 )

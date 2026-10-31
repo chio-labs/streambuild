@@ -16,6 +16,8 @@ SQL_WILDCARD: str = "*"
 SQL_WITH_KEYWORD: str = "WITH"
 SQL_RECURSIVE_KEYWORD: str = "RECURSIVE"
 SQL_AS_KEYWORD: str = "AS"
+SCAN_ERROR_KIND_MISSING_WITH: str = "missing_with"
+SCAN_ERROR_MISSING_WITH_SUFFIX: str = " must declare CTEs in a WITH clause"
 CLICKHOUSE_AGGREGATE_STATE_TYPE_NAMES: frozenset[str] = frozenset(
     {"aggregatefunction", "simpleaggregatefunction"}
 )

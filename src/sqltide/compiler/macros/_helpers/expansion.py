@@ -8,7 +8,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from sqltide.compiler.macros.constants import (
-    MACRO_CALL_SIGIL,
     MACRO_CONTEXT_ANNOTATION_NAME,
     MACRO_CONTEXT_PARAMETER_NAME,
     MACRO_SIGIL,
@@ -352,32 +351,7 @@ def _evaluate_dict_ast_node(
 
 
 def _find_next_macro_start(*, sql: str, start_index: int) -> int | None:
-    index: int | None = SqlLexicalScanner.find_next_unquoted_character(
-        sql=sql,
-        character=MACRO_CALL_SIGIL,
-        start=start_index,
-    )
-    while index is not None:
-        if _is_macro_call_start(sql=sql, at_index=index):
-            return index
-        index = SqlLexicalScanner.find_next_unquoted_character(
-            sql=sql,
-            character=MACRO_CALL_SIGIL,
-            start=index + 1,
-        )
-    return None
-
-
-def _is_macro_call_start(*, sql: str, at_index: int) -> bool:
-    if at_index > 0 and _is_identifier_continue(sql[at_index - 1]):
-        return False
-    if at_index + 1 >= len(sql) or not _is_identifier_start(sql[at_index + 1]):
-        return False
-    cursor: int = at_index + 2
-    while cursor < len(sql) and _is_identifier_continue(sql[cursor]):
-        cursor += 1
-    cursor = _skip_whitespace(sql=sql, start_index=cursor)
-    return cursor < len(sql) and sql[cursor] == OPEN_PAREN
+    return SqlLexicalScanner.find_next_macro_start(sql=sql, start=start_index)
 
 
 def _parse_macro_name(*, sql: str, call_start_index: int) -> str:
@@ -405,10 +379,6 @@ def _skip_whitespace(*, sql: str, start_index: int) -> int:
     while index < len(sql) and sql[index].isspace():
         index += 1
     return index
-
-
-def _is_identifier_start(character: str) -> bool:
-    return character == UNDERSCORE or character.isalpha()
 
 
 def _is_identifier_continue(character: str) -> bool:
